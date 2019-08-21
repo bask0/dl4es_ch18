@@ -7,7 +7,7 @@ Structure:
 * `src` code
     * `data` data processing
     * `models` pytorch models
-    * `visualization` code to create visualizations
+    * `visualizations` code to create visualizations
     * `experiments` the experiments (model trainers etc.)
         * `hydrology`
         * `vegetation`
