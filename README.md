@@ -4,13 +4,13 @@ Chapter 14 of "Deep learning for the Earth Sciences: A comprehensive approach to
 
 Structure:
 
-* src: Code
-    * data
-    * models
-    * visualization
-    * experiments
-        * hydrology
-        * vegetation
-* data: The data
-* docs: Text documents
-    * chapter
+* `src` code
+    * `data` data processing
+    * `models` pytorch models
+    * `visualization` code to create visualizations
+    * `experiments` the experiments (model trainers etc.)
+        * `hydrology`
+        * `vegetation`
+* `data` the data
+* `docs` text documents
+    * `chapter` the book chapter
