@@ -1,0 +1,22 @@
+{
+    "input": {
+        "static": {
+            "varname": ["PFT", "soilproperties"],
+            "path": ""
+        },
+        "dynamic": {
+            "varname": ["Rainf", "Snowf", "SWdown", "LWdown", "Tair", "Wind", "Qair", "PSurf"],
+            "path": "data/DataStructureMDI/DATA/grid/Global/0d50_daily/GSWP3/EXP1/Data/"
+        },
+        "msc": {
+            "varname": ["LAI", "Cloudcover"],
+            "path": ""
+        }
+    },
+    "target": {
+        "varname": ["ET"],
+        "path": "people/skoirala/spmip/full_matsiro-gw_exp3.run1_20180805_latlonReverse"
+    },
+    "years": [1950, 2014],
+    "chunk_size": 10
+}
