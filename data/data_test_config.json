@@ -5,7 +5,7 @@
             "path": ""
         },
         "dynamic": {
-            "varname": ["Rainf", "Snowf", "SWdown", "LWdown", "Tair", "Wind", "Qair", "PSurf"],
+            "varname": ["Rainf", "Tair"],
             "path": "data/DataStructureMDI/DATA/grid/Global/0d50_daily/GSWP3/EXP1/Data/"
         },
         "msc": {
@@ -17,6 +17,6 @@
         "varname": ["et"],
         "path": "people/skoirala/spmip/full_matsiro-gw_exp3.run1_20180805_latlonReverse"
     },
-    "years": [1950, 2014],
+    "years": [1950, 1960],
     "chunk_size": 10
 }
