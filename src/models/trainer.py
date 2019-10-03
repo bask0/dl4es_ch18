@@ -23,8 +23,9 @@ class Trainer(object):
             self.optimizer.zero_grad()
 
             if torch.cuda.is_available():
-                features = features.cuda()  # blocking
-                targets = targets.cuda()
+                features = features.cuda(non_blocking=False)
+                # Targets loaded to GPU during forward pass.
+                targets = targets.cuda(non_blocking=True)
 
             pred = self.model(features)
             loss = self.loss_fn(pred, targets)
@@ -56,8 +57,9 @@ class Trainer(object):
             self.optimizer.zero_grad()
 
             if torch.cuda.is_available():
-                features = features.cuda()  # blocking
-                targets = targets.cuda()
+                features = features.cuda(non_blocking=False)
+                # Targets loaded to GPU during forward pass.
+                targets = targets.cuda(non_blocking=True)
 
             pred = self.model(features)
             loss = self.loss_fn(pred, targets)

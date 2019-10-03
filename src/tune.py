@@ -36,12 +36,12 @@ class Emulator(tune.Trainable):
         if config['optimizer'] == 'Adam':
             optimizer = torch.optim.Adam(config['lr'])
         else:
-            raise ValueError(f'Optimizer {config['optimizer']} not defined.')
+            raise ValueError(f'Optimizer {config["optimizer"]} not defined.')
 
         if config['loss_fn'] == 'MSE':
             loss_fn = torch.nn.MSELoss()
         else:
-            raise ValueError(f'Loss function {config['loss_fn']} not defined.')
+            raise ValueError(f'Loss function {config["loss_fn"]} not defined.')
 
         self.trainer = Trainer(
             train_loader=None,
