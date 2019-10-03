@@ -65,3 +65,6 @@ class Emulator(tune.Trainable):
 
     def _restore(self, path):
         self.trainer.restore(path)
+
+    def get_dataloader():
+        pass
