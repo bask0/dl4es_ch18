@@ -1,10 +1,12 @@
 
 import torch
+from torch.utils.data.dataloader import DataLoader
 from ray import tune
 import argparse
 
 from models.lstm import LSTM
 from models.trainer import Trainer
+from data.data_loader import Data
 
 
 def parse_args():
@@ -17,6 +19,13 @@ def parse_args():
         required=True
     )
 
+    parser.add_argument(
+        '--dl_config_file',
+        type=str,
+        help='Data loader configuration file.',
+        default='../data/data_loader_config.json'
+    )
+
     args, _ = parser.parse_known_args()
 
     return args
@@ -24,6 +33,8 @@ def parse_args():
 
 class Emulator(tune.Trainable):
     def _setup(self, config):
+
+        self.config = config
 
         model = LSTM(
             input_size=config['input_size'],
@@ -66,5 +77,13 @@ class Emulator(tune.Trainable):
     def _restore(self, path):
         self.trainer.restore(path)
 
-    def get_dataloader():
-        pass
+def get_dataloader(config_file, partition_set, **kwargs):
+    dataset = Data(config_file=config_file, partition_set=partition_set)
+    dataloader = DataLoader(
+        dataset=dataset,
+        **kwargs
+    )
+    return dataloader
+
+def tune():
+    pass

@@ -17,11 +17,6 @@
         "varname": ["et"],
         "path": "people/skoirala/spmip/full_matsiro-gw_exp3.run1_20180805_latlonReverse"
     },
-    "time": {
-        "range": ["1950-01-01", "2014-12-31"],
-        "train": ["1950-01-01", "1980-12-31"],
-        "valid": ["1980-01-01", "2000-12-31"],
-        "test":  ["2000-01-01", "2014-12-31"]
-    },
+    "years": [1950, 2014],
     "chunk_size": 10
 }
