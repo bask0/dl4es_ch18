@@ -12,6 +12,7 @@ from ray.tune.schedulers import HyperBandForBOHB
 from models.lstm import LSTM
 from models.trainer import Trainer
 from data.data_loader import Data
+from experiments.hydrology.experiment_config import get_search_space, get_config
 
 
 def parse_args():
@@ -94,13 +95,16 @@ def get_dataloader(config_file, partition_set, **kwargs):
 
 def tune(args):
 
+    search_space = get_search_space(args.name)
+    config = get_config(args.name)
+
     ngpu = torch.cuda.device_count()
     ncpu = os.cpu_count()
 
     max_concurrent = int(
         np.min((
-            np.floor(ncpu / config['ncpu']),
-            np.floor(ngpu / config['ngpu'])
+            np.floor(ncpu / config['ncpu_per_run']),
+            np.floor(ngpu / config['ngpu_per_run'])
         ))
     )
 
@@ -111,7 +115,7 @@ def tune(args):
     )
 
     bobh_search = TuneBOHB(
-        space=space,
+        space=search_space,
         max_concurrent=max_concurrent,
         metric=config['metric'],
         mode='min'
