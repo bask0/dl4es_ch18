@@ -77,6 +77,7 @@ class Emulator(tune.Trainable):
     def _restore(self, path):
         self.trainer.restore(path)
 
+
 def get_dataloader(config_file, partition_set, **kwargs):
     dataset = Data(config_file=config_file, partition_set=partition_set)
     dataloader = DataLoader(
@@ -84,6 +85,7 @@ def get_dataloader(config_file, partition_set, **kwargs):
         **kwargs
     )
     return dataloader
+
 
 def tune():
     pass
