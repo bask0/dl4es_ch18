@@ -1,8 +1,13 @@
+import argparse
+import os
+import numpy as np
 
 import torch
 from torch.utils.data.dataloader import DataLoader
-from ray import tune
-import argparse
+
+import ray
+from ray.tune.suggest.bohb import TuneBOHB
+from ray.tune.schedulers import HyperBandForBOHB
 
 from models.lstm import LSTM
 from models.trainer import Trainer
@@ -31,7 +36,7 @@ def parse_args():
     return args
 
 
-class Emulator(tune.Trainable):
+class Emulator(ray.tune.Trainable):
     def _setup(self, config):
 
         self.config = config
@@ -87,5 +92,59 @@ def get_dataloader(config_file, partition_set, **kwargs):
     return dataloader
 
 
-def tune():
-    pass
+def tune(args):
+
+    ngpu = torch.cuda.device_count()
+    ncpu = os.cpu_count()
+
+    max_concurrent = int(
+        np.min((
+            np.floor(ncpu / config['ncpu']),
+            np.floor(ngpu / config['ngpu'])
+        ))
+    )
+
+    print(
+        '\nTuning hyperparameters;\n'
+        f'  Available resources: {ngpu} GPUs | {ncpu} CPUs\n'
+        f'  Number of concurrent runs: {max_concurrent}.'
+    )
+
+    bobh_search = TuneBOHB(
+        space=space,
+        max_concurrent=max_concurrent,
+        metric=config['metric'],
+        mode='min'
+    )
+
+    bohb_scheduler = HyperBandForBOHB(
+        time_attr='epoch',
+        metric=config['metric'],
+        mode='min',
+        max_t=2 if args.test else config['max_t'],
+        reduction_factor=config['reduction_factor'])
+
+    ray.tune.run(
+        Emulator,
+        resources_per_trial={
+            'cpu': config['ncpu'],
+            'gpu': config['ngpu']},
+        num_samples=config['num_samples'],
+        local_dir=store_train,
+        raise_on_failed_trial=True,
+        verbose=1,
+        with_server=False,
+        ray_auto_init=True,
+        search_alg=bobh_search,
+        scheduler=bohb_scheduler,
+        # [JsonLogger, CSVLogger, tf2_compat_logger],
+        loggers=[JsonLogger, CSVLogger],
+        checkpoint_at_end=True,
+        reuse_actors=False,
+        stop={'patience_counter': -1 if args.test else config['patience']}
+    )
+
+
+if __name__ == '__main__':
+    ray.init(include_webui=False, object_store_memory=int(50e9))
+    tune()
