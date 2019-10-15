@@ -20,16 +20,20 @@ def get_search_space(config_name='default'):
     if config_name == 'default':
         # Model args.
         config_space.add_hyperparameters([
+            # LSTM hidden size.
             CS.UniformIntegerHyperparameter(
-                'hidden_size', lower=0, upper=1),
-            CS.UniformIntegerHyperparameter(
-                'num_layers', lower=0, upper=1),
-            CS.UniformIntegerHyperparameter(
-                'dropout', lower=4, upper=16, q=2)
-        ])
+                'hidden_size', lower=20, upper=320, q=20),
+                # LSTM number of layers.
+                CS.UniformIntegerHyperparameter(
+                    'num_layers', lower=1, upper=3, q=1),
+                # Dropout probability.
+                CS.UniformFloatHyperparameter(
+                    'dropout', lower=0.0, upper=0.5, q=0.1)
+            ])
 
         # Optim args.
         config_space.add_hyperparameters([
+            # The learning rate.
             CS.CategoricalHyperparameter(
                 'learning_rate', choices=[1e-2, 1e-3, 1e-4])
         ])
@@ -61,10 +65,16 @@ def get_config(config_name):
     """
 
     global_config = {
-        # The name of the metric to optimize. Make shure this is part of
+        'experiment_name': 'dl_chapter_14_hydro',
+        # Directory for logging etc.
+        'store': '/scratch/dl_chapter14/experiments',
+        # The name of the metric to MINIMIZE. Make shure this is part of
         # the dict returned by 'YourTrainable._train'.
-        # THIS METRIC IS MINIMIZED!
-        'metric': 'mse (valid)',
+        'metric': 'loss_valid',
+        # The optimizer to use.
+        'optimizer': 'Adam',
+        # The loss function to use.
+        'loss_fn': 'MSE',
         # BOHB hyperband parameters (it is best to not change this):
         # - max_t: Maximum resources (in terms of epochs).
         # - Successive halving factor.
@@ -73,24 +83,52 @@ def get_config(config_name):
         'halving_factor': 3,
         'num_samples': 81 + 27 + 9 + 6 + 5,
         # Early stopping arguments: This applies to prediction only, where
-        # the best configuration from BOHB is used. After 'grace_period'
-        # number of epochs, training is stopped if more than 'patience' epochs
-        # have worse performance than current best, then predicitons are made.
+        # the best configuration from BOHB is used.
+        # - grace_period: Minimum number of epochs.
+        # - patience: After 'grace_period' number of epochs, training is stopped if
+        #   more than 'patience' epochs have worse performance than current best, than
+        #   predicitons are made.
         'grace_period': 40,
         'patience': 8,
         # Number of CPUs to use per run.
-        'ncpu_per_run': 5,
+        'ncpu_per_run': 10,
         # Number of GPUs to use per run (0, 1].
-        'ngpu_per_run': 0.5,
+        'ngpu_per_run': 1.0,
         # Number of workers per data loader.
-        'num_workers': 2,
+        'num_workers': 6,
         # Batch size is not part of the hyperparaeter search as we use
         # a batch size that optimizes training performance.
         'batch_size': 32,
         # Whether to pin memory; see torch.utils.data.dataloader:Dataloader.
-        'pin_memory': False,
+        'pin_memory': True,
+        # Data configuration:
+        'static_vars': ['PFT', 'soilproperties'],
+        'static_path': '/scratch/dl_chapter14/input/static',
+        'dynamic_vars': [
+            'Rainf',
+            'Snowf',
+            'SWdown',
+            'LWdown',
+            'Tair',
+            'Wind',
+            'Qair',
+            'PSurf'],
+        'dynamic_path': '/scratch/dl_chapter14/input/dynamic/gswp3.zarr',
+        'msc_vars': [
+            'LAI',
+            'Cloudcover'],
+        'msc_path': '/scratch/dl_chapter14/input/msc',
+        'target_var': 'et',
+        'target_path': '/scratch/dl_chapter14/target/dynamic/koirala2017.zarr',
+        'mask': 'mask',
+        'mask_path': '/scratch/dl_chapter14/mask.nc',
+        'time': {
+            'range': ['1950-01-01', '2014-12-31'],
+            'train': ['1950-01-01', '1980-12-31'],
+            'valid': ['1980-01-01', '2000-12-31'],
+            'test':  ['2000-01-01', '2014-12-31']
+        }
     }
-
     if config_name == 'default':
         experiment_config = {
             'noise_std': 0.0,

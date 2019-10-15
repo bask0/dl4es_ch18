@@ -1,8 +1,9 @@
 
 from torch import nn
+from models.modules import BaseModule
 
 
-class LSTM(nn.Module):
+class LSTM(BaseModule):
     def __init__(
             self,
             input_size,
@@ -24,7 +25,7 @@ class LSTM(nn.Module):
             output_size)
 
     def forward(self, x):
-        out = self.lstm(x)
+        out, _ = self.lstm(x)
         out = self.linear(out)
 
         return out
