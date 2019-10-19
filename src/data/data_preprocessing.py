@@ -6,8 +6,6 @@ import numpy as np
 import xarray as xr
 import time
 import zarr
-import shutil
-import ray
 
 from utils.parallel import parcall
 
@@ -16,16 +14,16 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        '--congig_file',
+        '--config_file',
         type=str,
         help='Configuration file (.json).',
         required=True
     )
 
     parser.add_argument(
-        '--target_dir',
+        '--out_dir',
         type=str,
-        help='Target directory relative to `bgi_path`.'
+        help='Output directory.'
     )
 
     parser.add_argument(
@@ -36,17 +34,17 @@ def parse_args():
     )
 
     parser.add_argument(
-        '-o'
+        '-o',
         '--overwrite',
-        type=bool,
         help='Overwtie existing variables, default is False.',
-        action='store_false'
+        action='store_true'
     )
 
     args, _ = parser.parse_known_args()
 
-    if not os.path.isfile(args.file):
-        raise ValueError('Configuration file (`file`) not found: ', args.file)
+    if not os.path.isfile(args.config_file):
+        raise ValueError(
+            'Configuration file (`file`) not found: ', args.config_file)
     if not os.path.isdir(args.bgi_path):
         raise ValueError('BGI path (`bgi_path`) not found: ', args.bgi_path)
 
@@ -64,14 +62,14 @@ def stack_data(files_in, file_out, overwrite):
 
     """
 
-    base_msg = 'Stacking to {target}... '
+    base_msg = f'Stacking to {file_out}... '
     tic = time.time()
     files = ' '.join(files_in)
     sys_call = f'cdo mergetime {files} {file_out}'
 
     print(base_msg)
 
-    if os.path.isfile(file_out):
+    if os.path.exists(file_out):
 
         if overwrite:
             os.remove(file_out)
@@ -84,10 +82,11 @@ def stack_data(files_in, file_out, overwrite):
         os.system(sys_call)
 
     toc = time.time()
-    elapsed = tic - toc
+    elapsed = toc - tic
     print(base_msg, f'done, elapsed time: {elapsed/60:0.0f} min')
 
-def write_zarr(zarr_file, file_in, varname, chunk_size, overwrite):
+
+def write_zarr(zarr_file, file_in, varname, chunk_size):
     """Add xr.Dataset to zarr group.
 
     Parameters
@@ -100,37 +99,80 @@ def write_zarr(zarr_file, file_in, varname, chunk_size, overwrite):
 
     """
 
-    base_msg = 'Converting to zarr: {varname}... '
+    base_msg = f'Converting to zarr: {varname}... '
     tic = time.time()
     print(base_msg)
 
-    ds = xr.open_dataset(file_in)
-    ds = ds.chunk({'time': -1, 'latitude': chunk_size, 'longitude': chunk_size})
-    ds = ds.rename({'latitude': 'lat', 'longitude': 'lon'})
-    ds.to_zarr(
-        zarr_file,
-        group=varname,
-        mode='w' if overwrite else 'a',
-        encoding={varname: {'compressor': None}})
+    if os.path.exists(os.path.join(zarr_file, varname)):
+        print(base_msg, 'exists, skipping.')
+
+    else:
+        ds = xr.open_dataset(file_in)
+
+        if 'latitude' in ds.coords:
+            ds = ds.rename({'latitude': 'lat', 'longitude': 'lon'})
+        ds = ds.chunk({'time': -1, 'lat': chunk_size,
+                       'lon': chunk_size})
+        ds.to_zarr(
+            zarr_file,
+            group=varname,
+            mode='w' if overwrite else 'a',
+            encoding={varname: {'compressor': None}})
 
     toc = time.time()
-    elapsed = tic - toc
+    elapsed = toc - tic
     print(base_msg, f'done, elapsed time: {elapsed/60:0.0f} min')
 
+
+def make_target_clean_again(file_in, file_out, year, overwrite):
+    """Copy data and clean years.
+
+    Parameters
+    ----------
+    files_in        List of netcdf file paths.
+    file_out        Output netcdf file path.
+    year            The year the dataset represents.
+    overwrite       Bool, wheter to overwrite existing.
+
+    """
+
+    base_msg = f'Stacking to {file_out}... '
+    tic = time.time()
+
+    print(base_msg)
+
+    ds = xr.open_dataset(file_in)
+
+    if os.path.exists(file_out):
+
+        if overwrite:
+            os.remove(file_out)
+
+            ds.sel(time=slice(f'{year}-01-01', f'{year}-12-31')).to_netcdf(file_out)
+
+        else:
+            print(base_msg, 'exists, skipping.')
+
+    else:
+        ds.sel(time=slice(f'{year}-01-01', f'{year}-12-31')).to_netcdf(file_out)
+
+    toc = time.time()
+    elapsed = toc - tic
+    print(base_msg, f'done, elapsed time: {elapsed/60:0.0f} min')
 
 
 if __name__ == '__main__':
 
     args = parse_args()
 
-    congig_file = args.congig_file
-    target_dir = args.target_dir
+    config_file = args.config_file
+    out_dir = args.out_dir
     bgi_path = args.bgi_path
     overwrite = args.overwrite
 
-    os.makedirs(target_dir, exist_ok=True)
+    os.makedirs(out_dir, exist_ok=True)
 
-    with open(congig_file) as f:
+    with open(config_file) as f:
         config = json.load(f)
 
     years = np.arange(config['years'][0], config['years'][1] + 1)
@@ -141,7 +183,7 @@ if __name__ == '__main__':
 
     # Stack yearly datasets to one.
     data_path = config['input']['dynamic']['path']
-    stack_dir = f'{target_dir}/org_data/gswp3_stacked/'
+    stack_dir = f'{out_dir}/org_data/gswp3_stacked/'
     os.makedirs(stack_dir, exist_ok=True)
 
     # Argument to parcall, needs to contain keywords of arguments to
@@ -149,7 +191,7 @@ if __name__ == '__main__':
     par_args = {
         'files_in': [
             [
-                bgi_path + f'{data_path}{var}/{var}.{y}.nc' for y in years
+                os.path.join(bgi_path, f'{data_path}{var}/{var}.{y}.nc') for y in years
             ] for var in varnames
         ],
         'file_out': [
@@ -160,8 +202,9 @@ if __name__ == '__main__':
     parcall(iterable=par_args, fun=stack_data, num_cpus=2, overwrite=overwrite)
 
     # Convert stacks to zarr files.
-    zarr_file = os.path.join(target_dir, '/input/dynamic/gswp3.zarr')
+    zarr_file = os.path.join(out_dir, 'input/dynamic/gswp3.zarr')
     os.makedirs(os.path.dirname(zarr_file), exist_ok=True)
+
     zarr.open_group(zarr_file, mode='w' if overwrite else 'a')
 
     par_args = {
@@ -171,4 +214,86 @@ if __name__ == '__main__':
         'varname': varnames
     }
 
-    parcall(par_args, fun=write_zarr, zarr_file=zarr_file, num_cpus=2, overwrite=overwrite)
+    parcall(par_args, fun=write_zarr, zarr_file=zarr_file, num_cpus=2, chunk_size=chunk_size)
+
+    # Dynamic targets --------------------------------------
+    varnames = config['target']['varname']
+
+    # Stack yearly datasets to one.
+    data_path = config['target']['path']
+    stack_dir = f'{out_dir}/org_data/koirala2017/'
+
+    os.makedirs(stack_dir, exist_ok=True)
+
+    # Convert stacks to zarr files.
+    zarr_file = os.path.join(out_dir, 'target/dynamic/koirala2017.zarr')
+    os.makedirs(os.path.dirname(zarr_file), exist_ok=True)
+
+    zarr.open_group(zarr_file, mode='w' if overwrite else 'a')
+
+    for var in varnames:
+        files_in = []
+        files_out = []
+        years_in = []
+        for y in years:
+            files_in.append(os.path.join(
+                bgi_path, data_path.strip('/'), f'full_matsiro-gw_exp3_experiment_3_{y}.nc'))
+
+            files_out.append(os.path.join(
+                stack_dir, var, f'full_matsiro-gw_exp3_experiment_3_{y}.nc'))
+
+            years_in.append(y)
+
+        par_args = {
+            'file_in': files_in,
+            'file_out': files_out,
+            'year': years_in
+        }
+
+        os.makedirs(os.path.dirname(files_out[0]), exist_ok=True)
+
+        parcall(par_args, fun=make_target_clean_again, num_cpus=2, overwrite=overwrite)
+
+        base_msg = f'Converting to {var}... '
+        tic = time.time()
+
+        print(base_msg)
+
+        if os.path.exists(os.path.join(zarr_file, var)):
+            if overwrite:
+                ds = xr.open_mfdataset(files_out)
+                if 'latitude' in ds.coords:
+                    ds = ds.rename({'latitude': 'lat', 'longitude': 'lon'})
+
+                ds = ds.chunk({'time': -1, 'lat': chunk_size, 'lon': chunk_size})
+
+                ds.to_zarr(
+                    zarr_file,
+                    group=var,
+                    mode='w' if overwrite else 'a',
+                    encoding={var: {'compressor': None}})
+            else:
+                print(base_msg, 'exists, skipping.')
+
+        else:
+            ds = xr.open_mfdataset(files_out)
+            if 'latitude' in ds.coords:
+                ds = ds.rename({'latitude': 'lat', 'longitude': 'lon'})
+
+            ds = ds.chunk(
+                {'time': -1, 'lat': chunk_size, 'lon': chunk_size})
+
+            ds.to_zarr(
+                zarr_file,
+                group=var,
+                mode='w' if overwrite else 'a',
+                encoding={var: {'compressor': None}})
+
+        toc = time.time()
+        elapsed = toc - tic
+        print(base_msg, f'done, elapsed time: {elapsed/60:0.0f} min')
+
+    mask = xr.open_zarr(files_in[0])[[varnames[0]]].isel(time=0).drop(
+        'time').notnull().rename({varnames[0]: 'mask'})
+
+    mask.to_netcdf(os.path.join(out_dir, 'mask.nc'))
