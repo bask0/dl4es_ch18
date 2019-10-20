@@ -36,9 +36,22 @@ class Data(Dataset):
         # Date range, e.g. ['2000-01-01', '2004-12-31']
         self.part_range = config['time'][partition_set]
 
+        # Apply warmup period:
+        # - if training set: warmup period is added to training period start.
+        # - if validation / testing: warmup period is subtracted from period start.
+        if partition_set == 'train':
+            warmup_start = self.part_range[0]
+            warmup_end = f'{int(self.part_range[0][:4])+config["warmup"]}{self.part_range[0][4:]}'
+        else:
+            warmup_start = f'{int(self.part_range[0][:4])-config["warmup"]}{self.part_range[0][4:]}'
+            warmup_end = self.part_range[0]
+
         # Indices of partition_set (e.g. training) reative to the dataset range.
-        self.t_start = np.argwhere(self.date_range == self.part_range[0])[0][0]
+        self.t_start = np.argwhere(self.date_range == warmup_start)[0][0]
+        self.t_wamup_end = np.argwhere(self.date_range == warmup_end)[0][0]
         self.t_end = np.argwhere(self.date_range == self.part_range[1])[0][0]
+
+        self.num_warmup_steps = self.t_wamup_end - self.t_start
 
         mask = xr.open_dataset(self.mask_path)
         self.coords = np.argwhere(mask.mask.values)
@@ -54,7 +67,6 @@ class Data(Dataset):
                 self.t_start:self.t_end, lat, lon]) for var in self.dyn_features_names
         ], axis=-1)
 
-        dyn_target = self.dyn_target[self.dyn_target_name][
-            self.dyn_target_name][self.t_start:self.t_end, lat, lon]
+        dyn_target = self.dyn_target[self.dyn_target_name][self.t_start:self.t_end, lat, lon]
 
         return dyn_features, dyn_target

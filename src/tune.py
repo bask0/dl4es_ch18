@@ -120,7 +120,7 @@ class Emulator(ray.tune.Trainable):
             self.hc_config,
             partition_set='valid',
             batch_size=self.hc_config['batch_size'],
-            shuffle=False,
+            shuffle=True,
             drop_last=False,
             num_workers=self.hc_config['num_workers'],
             pin_memory=self.hc_config['pin_memory']
@@ -152,6 +152,7 @@ class Emulator(ray.tune.Trainable):
             model=model,
             optimizer=optimizer,
             loss_fn=loss_fn,
+            train_seq_length=self.hc_config['train_slice_length'],
             is_test=self.hc_config['is_test']
         )
 
@@ -194,7 +195,7 @@ def tune(args):
     search_space = get_search_space(args.config_name)
     config = get_config(args.config_name)
 
-    store = f'{config["store"]}/{args.config_name}/{"pred" if args.predict else "tune"}'
+    store = f'{config["store"]}/{config["experiment_name"]}/{args.config_name}/{"pred" if args.predict else "tune"}'
     if args.overwrite:
         if os.path.isdir(store):
             shutil.rmtree(store)

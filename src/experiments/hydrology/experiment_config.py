@@ -22,7 +22,7 @@ def get_search_space(config_name='default'):
         config_space.add_hyperparameters([
             # LSTM hidden size.
             CS.UniformIntegerHyperparameter(
-                'hidden_size', lower=20, upper=320, q=20),
+                    'hidden_size', lower=20, upper=320, q=20),
                 # LSTM number of layers.
                 CS.UniformIntegerHyperparameter(
                     'num_layers', lower=1, upper=3, q=1),
@@ -65,7 +65,7 @@ def get_config(config_name):
     """
 
     global_config = {
-        'experiment_name': 'dl_chapter_14_hydro',
+        'experiment_name': 'hydro',
         # Directory for logging etc.
         'store': '/scratch/dl_chapter14/experiments',
         # The name of the metric to MINIMIZE. Make shure this is part of
@@ -99,6 +99,10 @@ def get_config(config_name):
         # Batch size is not part of the hyperparaeter search as we use
         # a batch size that optimizes training performance.
         'batch_size': 32,
+        # Warmup period in years.
+        'warmup': 5,
+        # The length of the training sequence, will be used to randomly subset training batch.
+        'train_slice_length': 10 * 365,
         # Whether to pin memory; see torch.utils.data.dataloader:Dataloader.
         'pin_memory': True,
         # Data configuration:
@@ -118,7 +122,7 @@ def get_config(config_name):
             'LAI',
             'Cloudcover'],
         'msc_path': '/scratch/dl_chapter14/input/msc',
-        'target_var': 'et',
+        'target_var': 'mrro',
         'target_path': '/scratch/dl_chapter14/target/dynamic/koirala2017.zarr',
         'mask': 'mask',
         'mask_path': '/scratch/dl_chapter14/mask.nc',

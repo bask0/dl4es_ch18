@@ -8,10 +8,10 @@ class Trainer(object):
             train_loader,
             valid_loader,
             test_loader,
-
             model,
             optimizer,
             loss_fn,
+            train_seq_length,
             is_test):
         self.train_loader = train_loader
         self.valid_loader = valid_loader
@@ -20,6 +20,7 @@ class Trainer(object):
         self.model.weight_init()
         self.optimizer = optimizer
         self.loss_fn = loss_fn
+        self.train_seq_length = train_seq_length
         self.is_test = is_test
 
         self.epoch = 0
@@ -33,14 +34,31 @@ class Trainer(object):
         for step, (features, targets) in enumerate(self.train_loader):
             self.optimizer.zero_grad()
 
+            t_start = torch.randint(
+                0, int(features.size(1) - self.train_loader.dataset.num_warmup_steps - self.train_seq_length), (1, ))
+            t_end = t_start + self.train_loader.dataset.num_warmup_steps + self.train_seq_length
+
             if torch.cuda.is_available():
-                features = features.cuda(non_blocking=False)
+                features = features[:, t_start:t_end, :].cuda(non_blocking=False)
                 # Targets loaded to GPU during forward pass.
-                targets = targets.cuda(non_blocking=True)
+                targets = targets[:, t_start:t_end].cuda(non_blocking=True)
+
+            if torch.isnan(features).any():
+                raise ValueError(
+                    'NaN in features in testing, training stopped.')
+            if torch.isnan(targets).any():
+                raise ValueError(
+                    'NaN in target in testing, training stopped.')
 
             pred = self.model(features)
-            loss = self.loss_fn(pred[:, :, 0], targets)
+            loss = self.loss_fn(
+                pred[:, self.train_loader.dataset.num_warmup_steps:, 0],
+                targets[:, self.train_loader.dataset.num_warmup_steps:])
+
             loss.backward()
+
+            if torch.isnan(loss):
+                raise ValueError('Training loss is NaN, training stopped.')
 
             self.optimizer.step()
 
@@ -50,9 +68,8 @@ class Trainer(object):
 
             del loss
 
-            if self.is_test:
-                if step > 2:
-                    break
+            if step > 200:
+                break
 
         mean_loss = total_loss / (step + 1)
 
@@ -70,25 +87,33 @@ class Trainer(object):
         total_loss = 0
 
         for step, (features, targets) in enumerate(self.valid_loader):
-            self.optimizer.zero_grad()
 
             if torch.cuda.is_available():
                 features = features.cuda(non_blocking=False)
                 # Targets loaded to GPU during forward pass.
                 targets = targets.cuda(non_blocking=True)
 
-            pred = self.model(features)
-            loss = self.loss_fn(pred[:, :, 0], targets)
+            if torch.isnan(features).any():
+                raise ValueError(
+                    'NaN in features in validation, training stopped.')
+            if torch.isnan(targets).any():
+                raise ValueError(
+                    'NaN in targets in validation, training stopped.')
 
-            self.optimizer.step()
+            pred = self.model(features)
+            loss = self.loss_fn(
+                pred[:, self.valid_loader.dataset.num_warmup_steps:, 0],
+                targets[:, self.valid_loader.dataset.num_warmup_steps:])
+
+            if torch.isnan(loss):
+                raise ValueError('Validation loss is NaN, training stopped.')
 
             total_loss += loss.item()
 
             del loss
 
-            if self.is_test:
-                if step > 2:
-                    break
+            if step > 200:
+                break
 
         mean_loss = total_loss / (step + 1)
 
