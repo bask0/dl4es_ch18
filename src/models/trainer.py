@@ -23,6 +23,8 @@ class Trainer(object):
         self.train_seq_length = train_seq_length
         self.is_test = is_test
 
+        self.num_batches_per_epoch = 2 if is_test else 200
+
         self.epoch = 0
         self.global_step = 0
 
@@ -68,7 +70,7 @@ class Trainer(object):
 
             del loss
 
-            if step > 200:
+            if step > self.num_batches_per_epoch:
                 break
 
         mean_loss = total_loss / (step + 1)
@@ -112,7 +114,7 @@ class Trainer(object):
 
             del loss
 
-            if step > 200:
+            if step > self.num_batches_per_epoch:
                 break
 
         mean_loss = total_loss / (step + 1)

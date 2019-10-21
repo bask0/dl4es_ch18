@@ -241,7 +241,7 @@ def tune(args):
         time_attr='epoch',
         metric=config['metric'],
         mode='min',
-        max_t=config['max_t'],
+        max_t=5 if args.test else config['max_t'],
         reduction_factor=config['halving_factor'])
 
     if args.run_single:
@@ -259,7 +259,7 @@ def tune(args):
             resources_per_trial={
                 'cpu': config['ncpu_per_run'],
                 'gpu': config['ngpu_per_run']},
-            num_samples=config['num_samples'],
+            num_samples=max_concurrent if args.test else config['num_samples'],
             local_dir=store,
             raise_on_failed_trial=True,
             verbose=1,
@@ -268,7 +268,10 @@ def tune(args):
             search_alg=bobh_search,
             scheduler=bohb_scheduler,
             loggers=[JsonLogger, CSVLogger],
+            keep_checkpoints_num=1,
+            checkpoint_freq=1,
             checkpoint_at_end=True,
+            checkpoint_score_attr=f'min-{config["metric"]}',
             reuse_actors=False,
             stop={'patience_counter': config['patience']}
         )
@@ -286,7 +289,6 @@ def tune(args):
             with_server=False,
             ray_auto_init=False,
             loggers=[JsonLogger, CSVLogger],
-            checkpoint_at_end=True,
             reuse_actors=False,
             stop={'patience_counter': -1 if args.test else config['patience']}
         )
