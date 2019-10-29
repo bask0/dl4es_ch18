@@ -1,9 +1,16 @@
 
 from torch import nn
+from models.modules import BaseModule
 
 
-class LSTM(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers, output_size=1, dropout=0.0):
+class LSTM(BaseModule):
+    def __init__(
+            self,
+            input_size,
+            hidden_size,
+            num_layers,
+            output_size=1,
+            dropout=0.0):
         super(LSTM, self).__init__()
 
         self.lstm = nn.LSTM(
@@ -18,7 +25,8 @@ class LSTM(nn.Module):
             output_size)
 
     def forward(self, x):
-        out = self.lstm(x)
+        out, _ = self.lstm(x)
+        out = nn.Tanh(out)
         out = self.linear(out)
 
         return out

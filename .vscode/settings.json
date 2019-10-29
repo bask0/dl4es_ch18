@@ -1,3 +1,4 @@
 {
-    "python.pythonPath": "/Users/bk/anaconda/envs/dl_chapter/bin/python"
+    "python.linting.flake8Enabled": true,
+    "python.linting.enabled": true
 }

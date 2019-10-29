@@ -229,71 +229,60 @@ if __name__ == '__main__':
     zarr_file = os.path.join(out_dir, 'target/dynamic/koirala2017.zarr')
     os.makedirs(os.path.dirname(zarr_file), exist_ok=True)
 
-    zarr.open_group(zarr_file, mode='w' if overwrite else 'a')
+    zarr.open_group(zarr_file, mode='w')
 
-    for var in varnames:
-        files_in = []
-        files_out = []
-        years_in = []
-        for y in years:
-            files_in.append(os.path.join(
-                bgi_path, data_path.strip('/'), f'full_matsiro-gw_exp3_experiment_3_{y}.nc'))
+    # copying data to local disk.
+    files_in = []
+    files_out = []
+    years_in = []
 
-            files_out.append(os.path.join(
-                stack_dir, var, f'full_matsiro-gw_exp3_experiment_3_{y}.nc'))
+    for y in years:
+        files_in.append(os.path.join(
+            bgi_path, data_path.strip('/'), f'full_matsiro-gw_exp3_experiment_3_{y}.nc'))
 
-            years_in.append(y)
+        files_out.append(os.path.join(
+            stack_dir, f'full_matsiro-gw_exp3_experiment_3_{y}.nc'))
 
-        par_args = {
-            'file_in': files_in,
-            'file_out': files_out,
-            'year': years_in
-        }
+        years_in.append(y)
 
-        os.makedirs(os.path.dirname(files_out[0]), exist_ok=True)
+    par_args = {
+        'file_in': files_in,
+        'file_out': files_out,
+        'year': years_in
+    }
 
-        parcall(par_args, fun=make_target_clean_again, num_cpus=2, overwrite=overwrite)
+    os.makedirs(os.path.dirname(files_out[0]), exist_ok=True)
 
-        base_msg = f'Converting to {var}... '
-        tic = time.time()
+    parcall(par_args, fun=make_target_clean_again,
+            num_cpus=2, overwrite=overwrite)
 
-        print(base_msg)
+    base_msg = f'Converting target... '
 
-        if os.path.exists(os.path.join(zarr_file, var)):
-            if overwrite:
-                ds = xr.open_mfdataset(files_out)
-                if 'latitude' in ds.coords:
-                    ds = ds.rename({'latitude': 'lat', 'longitude': 'lon'})
+    tic = time.time()
 
-                ds = ds.chunk({'time': -1, 'lat': chunk_size, 'lon': chunk_size})
+    print(base_msg)
 
-                ds.to_zarr(
-                    zarr_file,
-                    group=var,
-                    mode='w' if overwrite else 'a',
-                    encoding={var: {'compressor': None}})
-            else:
-                print(base_msg, 'exists, skipping.')
+    ds = xr.open_mfdataset(files_out)[varnames]
 
-        else:
-            ds = xr.open_mfdataset(files_out)
-            if 'latitude' in ds.coords:
-                ds = ds.rename({'latitude': 'lat', 'longitude': 'lon'})
+    ds = ds.chunk({'time': -1, 'lat': chunk_size, 'lon': chunk_size})
 
-            ds = ds.chunk(
-                {'time': -1, 'lat': chunk_size, 'lon': chunk_size})
+    ds.to_zarr(
+        zarr_file,
+        mode='w',
+        encoding={var: {'compressor': None} for var in varnames})
 
-            ds.to_zarr(
-                zarr_file,
-                group=var,
-                mode='w' if overwrite else 'a',
-                encoding={var: {'compressor': None}})
+    toc = time.time()
+    elapsed = toc - tic
+    print(base_msg, f'done, elapsed time: {elapsed/60:0.0f} min')
 
-        toc = time.time()
-        elapsed = toc - tic
-        print(base_msg, f'done, elapsed time: {elapsed/60:0.0f} min')
+    ds = xr.open_zarr(zarr_file)
 
-    mask = xr.open_zarr(files_in[0])[[varnames[0]]].isel(time=0).drop(
-        'time').notnull().rename({varnames[0]: 'mask'})
+    not_null = ds.notnull().all('time')
+    varnames = list(not_null.data_vars)
+    mask = not_null[varnames[0]]
+    for v in varnames[1:]:
+        mask = mask * not_null[v]
+
+    mask = xr.Dataset({'mask': mask})
 
     mask.to_netcdf(os.path.join(out_dir, 'mask.nc'))

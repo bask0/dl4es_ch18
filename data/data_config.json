@@ -14,7 +14,7 @@
         }
     },
     "target": {
-        "varname": ["et"],
+        "varname": ["et", "tws", "mrro", "wtd", "rzwc"],
         "path": "people/skoirala/spmip/full_matsiro-gw_exp3.run1_20180805_latlonReverse"
     },
     "years": [1950, 2014],
