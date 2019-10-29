@@ -6,7 +6,6 @@ class Trainer(object):
     def __init__(
             self,
             train_loader,
-            valid_loader,
             test_loader,
             model,
             optimizer,
@@ -14,7 +13,6 @@ class Trainer(object):
             train_seq_length,
             is_test):
         self.train_loader = train_loader
-        self.valid_loader = valid_loader
         self.test_loader = test_loader
         self.model = model.cuda() if torch.cuda.is_available() else model
         self.model.weight_init()
@@ -23,7 +21,7 @@ class Trainer(object):
         self.train_seq_length = train_seq_length
         self.is_test = is_test
 
-        self.num_batches_per_epoch = 2 if is_test else 200
+        self.num_batches_per_epoch = 2 if is_test else 10e10
 
         self.epoch = 0
         self.global_step = 0
@@ -83,12 +81,12 @@ class Trainer(object):
         }
 
     @torch.no_grad()
-    def valid_epoch(self):
+    def test_epoch(self):
         self.model.eval()
 
         total_loss = 0
 
-        for step, (features, targets) in enumerate(self.valid_loader):
+        for step, (features, targets) in enumerate(self.test_loader):
 
             if torch.cuda.is_available():
                 features = features.cuda(non_blocking=False)
@@ -97,18 +95,18 @@ class Trainer(object):
 
             if torch.isnan(features).any():
                 raise ValueError(
-                    'NaN in features in validation, training stopped.')
+                    'NaN in features in testing, training stopped.')
             if torch.isnan(targets).any():
                 raise ValueError(
-                    'NaN in targets in validation, training stopped.')
+                    'NaN in targets in testing, training stopped.')
 
             pred = self.model(features)
             loss = self.loss_fn(
-                pred[:, self.valid_loader.dataset.num_warmup_steps:, 0],
-                targets[:, self.valid_loader.dataset.num_warmup_steps:])
+                pred[:, self.test_loader.dataset.num_warmup_steps:, 0],
+                targets[:, self.test_loader.dataset.num_warmup_steps:])
 
             if torch.isnan(loss):
-                raise ValueError('Validation loss is NaN, training stopped.')
+                raise ValueError('Test loss is NaN, training stopped.')
 
             total_loss += loss.item()
 
@@ -120,7 +118,7 @@ class Trainer(object):
         mean_loss = total_loss / (step + 1)
 
         return {
-            'loss_valid': mean_loss
+            'loss_test': mean_loss
         }
 
     def save(self, checkpoint: str) -> None:

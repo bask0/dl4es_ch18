@@ -70,7 +70,7 @@ def get_config(config_name):
         'store': '/scratch/dl_chapter14/experiments',
         # The name of the metric to MINIMIZE. Make shure this is part of
         # the dict returned by 'YourTrainable._train'.
-        'metric': 'loss_valid',
+        'metric': 'loss_test',
         # The optimizer to use.
         'optimizer': 'Adam',
         # The loss function to use.
@@ -128,8 +128,7 @@ def get_config(config_name):
         'mask_path': '/scratch/dl_chapter14/mask.nc',
         'time': {
             'range': ['1950-01-01', '2014-12-31'],
-            'train': ['1950-01-01', '1980-12-31'],
-            'valid': ['1980-01-01', '2000-12-31'],
+            'train': ['1950-01-01', '2000-12-31'],
             'test':  ['2000-01-01', '2014-12-31']
         }
     }

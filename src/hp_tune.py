@@ -20,6 +20,7 @@ from models.lstm import LSTM
 from models.trainer import Trainer
 from data.data_loader import Data
 from experiments.hydrology.experiment_config import get_search_space, get_config
+from summarize_runs import summarize
 
 
 def parse_args():
@@ -41,16 +42,9 @@ def parse_args():
     )
 
     parser.add_argument(
-        '--predict',
-        '-P',
-        help='Flag to set prediction mode (hyperparameter optimization).',
-        action='store_true'
-    )
-
-    parser.add_argument(
         '--overwrite',
         '-O',
-        help='Flag to overwrite existing runs (all existng runs will be lost!).',
+        help='Flag to overwrite existing runs (all existing runs will be lost!).',
         action='store_true'
     )
 
@@ -116,20 +110,11 @@ class Emulator(ray.tune.Trainable):
             num_workers=self.hc_config['num_workers'],
             pin_memory=self.hc_config['pin_memory']
         )
-        valid_loader = get_dataloader(
-            self.hc_config,
-            partition_set='valid',
-            batch_size=self.hc_config['batch_size'],
-            shuffle=True,
-            drop_last=False,
-            num_workers=self.hc_config['num_workers'],
-            pin_memory=self.hc_config['pin_memory']
-        )
         test_loader = get_dataloader(
             self.hc_config,
             partition_set='test',
             batch_size=self.hc_config['batch_size'],
-            shuffle=False,
+            shuffle=True,
             drop_last=False,
             num_workers=self.hc_config['num_workers'],
             pin_memory=self.hc_config['pin_memory']
@@ -147,7 +132,6 @@ class Emulator(ray.tune.Trainable):
 
         self.trainer = Trainer(
             train_loader=train_loader,
-            valid_loader=valid_loader,
             test_loader=test_loader,
             model=model,
             optimizer=optimizer,
@@ -158,20 +142,15 @@ class Emulator(ray.tune.Trainable):
 
     def _train(self):
         train_stats = self.trainer.train_epoch()
-        valid_stats = self.trainer.valid_epoch()
+        test_stats = self.trainer.test_epoch()
 
-        stats = {**train_stats, **valid_stats}
+        stats = {**train_stats, **test_stats}
 
         # Disable early stopping before 'grace period' is reched.
         if stats['epoch'] < self.hc_config['grace_period']:
             stats['patience_counter'] = -1
 
         return stats
-
-    def _stop(self):
-        if self.hc_config['predict']:
-            # TODO: Save pedictions.
-            pass
 
     def _save(self, path):
         path = os.path.join(path, 'model.pth')
@@ -182,7 +161,7 @@ class Emulator(ray.tune.Trainable):
 
 
 def get_dataloader(config, partition_set, **kwargs):
-    dataset = Data(config=config, partition_set=partition_set)
+    dataset = Data(config=config, partition_set=partition_set, is_tune=True)
     dataloader = DataLoader(
         dataset=dataset,
         **kwargs
@@ -195,7 +174,7 @@ def tune(args):
     search_space = get_search_space(args.config_name)
     config = get_config(args.config_name)
 
-    store = f'{config["store"]}/{config["experiment_name"]}/{args.config_name}/{"pred" if args.predict else "tune"}'
+    store = f'{config["store"]}/{config["experiment_name"]}/{args.config_name}/tune/'
     if args.overwrite:
         if os.path.isdir(store):
             shutil.rmtree(store)
@@ -203,11 +182,10 @@ def tune(args):
         if os.path.isdir(store):
             raise ValueError(
                 f'The tune directory {store} exists. Set flag "--overwrite" '
-                'if you want to overwrite runs - all esisting runs will be lost!')
+                'if you want to overwrite runs - all existing runs will be lost!')
     os.makedirs(store)
 
     config.update({
-        'predict': args.predict,
         'store': store,
         'is_test': args.test
     })
@@ -252,50 +230,36 @@ def tune(args):
         logging.warning('Finishing test run.')
         sys.exit('0')
 
-    if not args.predict:
-        ray.tune.run(
-            Emulator,
-            name=config['experiment_name'],
-            resources_per_trial={
-                'cpu': config['ncpu_per_run'],
-                'gpu': config['ngpu_per_run']},
-            num_samples=max_concurrent if args.test else config['num_samples'],
-            local_dir=store,
-            raise_on_failed_trial=True,
-            verbose=1,
-            with_server=False,
-            ray_auto_init=False,
-            search_alg=bobh_search,
-            scheduler=bohb_scheduler,
-            loggers=[JsonLogger, CSVLogger],
-            keep_checkpoints_num=1,
-            checkpoint_freq=1,
-            checkpoint_at_end=True,
-            checkpoint_score_attr=f'min-{config["metric"]}',
-            reuse_actors=False,
-            stop={'patience_counter': config['patience']}
-        )
-    else:
-        ray.tune.run(
-            Emulator,
-            name=config['experiment_name'],
-            resources_per_trial={
-                'cpu': config['ncpu_per_run'],
-                'gpu': config['ngpu_per_run']},
-            num_samples=1,
-            local_dir=store,
-            raise_on_failed_trial=True,
-            verbose=1,
-            with_server=False,
-            ray_auto_init=False,
-            loggers=[JsonLogger, CSVLogger],
-            reuse_actors=False,
-            stop={'patience_counter': -1 if args.test else config['patience']}
-        )
+    ray.tune.run(
+        Emulator,
+        name=config['experiment_name'],
+        resources_per_trial={
+            'cpu': config['ncpu_per_run'],
+            'gpu': config['ngpu_per_run']},
+        num_samples=max_concurrent if args.test else config['num_samples'],
+        local_dir=store,
+        raise_on_failed_trial=True,
+        verbose=1,
+        with_server=False,
+        ray_auto_init=False,
+        search_alg=bobh_search,
+        scheduler=bohb_scheduler,
+        loggers=[JsonLogger, CSVLogger],
+        keep_checkpoints_num=1,
+        reuse_actors=False,
+        stop={'patience_counter': config['patience']}
+    )
+
+    return store, config['metric']
 
 
 if __name__ == '__main__':
     args = parse_args()
-    print(args)
+
     ray.init(include_webui=False, object_store_memory=int(50e9))
-    tune(args)
+
+    store, metric_name = tune(args)
+
+    ray.shutdown()
+
+    summarize(store, metric_name)
