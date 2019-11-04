@@ -1,22 +1,36 @@
+from models.emulator import Emulator
+from experiments.hydrology.experiment_config import get_config
+import ray
 import argparse
-import logging
+import os
+import pickle
+import shutil
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        '--summary_dir',
-        '-s',
+        '--config_name',
+        '-c',
         type=str,
-        help='Path to summary dir containing model configuration and checkpoint.',
+        help='Configuration name.',
         default='default'
+    )
+
+    parser.add_argument(
+        '--dl_config_file',
+        type=str,
+        help='Data loader configuration file.',
+        default='../data/data_loader_config.json'
     )
 
     parser.add_argument(
         '--overwrite',
         '-O',
-        help='Flag to overwrite existing runs (all existng runs will be lost!).',
+        help='Flag to overwrite existing runs (all existing runs will be lost!).',
         action='store_true'
     )
 
@@ -25,18 +39,60 @@ def parse_args():
     return args
 
 
-       ray.tune.run(
-            Emulator,
-            name=config['experiment_name'],
-            resources_per_trial={
-                'cpu': config['ncpu_per_run'],
-                'gpu': config['ngpu_per_run']},
-            num_samples=1,
-            local_dir=store,
-            raise_on_failed_trial=True,
-            verbose=1,
-            with_server=False,
-            ray_auto_init=False,
-            loggers=[JsonLogger, CSVLogger],
-            reuse_actors=False,
-            stop={'patience_counter': -1 if args.test else config['patience']}
+def load_best_config(store):
+    best_config = os.path.join(store, 'summary/best_params.pkl')
+    if not os.path.isfile(best_config):
+        raise ValueError(
+            'Tried to load best model config, file does not exist:\n'
+            f'{best_config}\nRun `summarize_results.py` to create '
+            'such a file.'
+        )
+    with open(best_config, 'rb') as f:
+        config = pickle.load(f)
+
+    return config
+
+
+def tune(args):
+
+    config = get_config(args.config_name)
+    config.update({'is_tune': False})
+
+    cv_store = f'{config["store"]}/{config["experiment_name"]}/{args.config_name}/cv/'
+    store = f'{config["store"]}/{config["experiment_name"]}/{args.config_name}/pred/'
+    if args.overwrite:
+        if os.path.isdir(store):
+            shutil.rmtree(store)
+    else:
+        if os.path.isdir(store):
+            raise ValueError(
+                f'The directory {store} exists. Set flag "--overwrite" '
+                'if you want to overwrite runs - all existing runs will be lost!')
+    os.makedirs(store)
+
+    best_config = load_best_config(cv_store)
+    best_config.update({'fold': -1})
+
+    best_config.update({'hc_config': config})
+
+    config.update({
+        'store': store,
+        'is_test': args.test
+    })
+
+    e = Emulator(best_config)
+    e._restore(os.path.join(cv_store, 'final', 'model.pth'))
+    predictions = e._predict()
+    predictions.to_netcdf(os.path.join(store, 'predictions.nc'))
+
+
+if __name__ == '__main__':
+    args = parse_args()
+
+    ray.init(include_webui=False, object_store_memory=int(50e9))
+
+    store, metric_name = tune(args)
+
+    ray.shutdown()
+
+    # summarize(store, metric_name)

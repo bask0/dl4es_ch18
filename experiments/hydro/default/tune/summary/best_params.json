@@ -1,6 +1,68 @@
 {
-  "dropout": 0.2,
-  "hidden_size": 120,
-  "learning_rate": 0.001,
-  "num_layers": 1
+  "dropout": 0.0,
+  "hc_config": {
+    "batch_size": 32,
+    "dynamic_path": "/scratch/dl_chapter14/input/dynamic/gswp3.zarr",
+    "dynamic_vars": [
+      "Rainf",
+      "Snowf",
+      "SWdown",
+      "LWdown",
+      "Tair",
+      "Wind",
+      "Qair",
+      "PSurf"
+    ],
+    "experiment_name": "hydro",
+    "grace_period": 10,
+    "halving_factor": 2,
+    "is_test": false,
+    "is_tune": true,
+    "loss_fn": "MSE",
+    "mask": "mask",
+    "mask_path": "/scratch/dl_chapter14/mask.nc",
+    "max_t": 20,
+    "metric": "loss_eval",
+    "msc_path": "/scratch/dl_chapter14/input/msc",
+    "msc_vars": [
+      "LAI",
+      "Cloudcover"
+    ],
+    "ncpu_per_run": 20,
+    "ngpu_per_run": 1.0,
+    "noise_std": 0.0,
+    "num_samples": 40,
+    "num_workers": 8,
+    "optimizer": "Adam",
+    "patience": 8,
+    "pin_memory": false,
+    "shuffle": 0,
+    "static_path": "/scratch/dl_chapter14/input/static",
+    "static_vars": [
+      "PFT",
+      "soilproperties"
+    ],
+    "store": "/scratch/dl_chapter14/experiments/hydro/default/tune/",
+    "target_path": "/scratch/dl_chapter14/target/dynamic/koirala2017.zarr",
+    "target_var": "mrro",
+    "time": {
+      "eval": [
+        "2000-01-01",
+        "2014-12-31"
+      ],
+      "range": [
+        "1950-01-01",
+        "2014-12-31"
+      ],
+      "train": [
+        "1950-01-01",
+        "2000-12-31"
+      ]
+    },
+    "train_slice_length": 3650,
+    "warmup": 5
+  },
+  "hidden_size": 220,
+  "learning_rate": 0.01,
+  "num_layers": 3
 }

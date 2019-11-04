@@ -1,26 +1,19 @@
+from models.emulator import Emulator
+from summarize_runs import summarize
+from experiments.hydrology.experiment_config import get_search_space, get_config
+from ray.tune.logger import CSVLogger, JsonLogger
+from ray.tune.schedulers import HyperBandForBOHB
+from ray.tune.suggest.bohb import TuneBOHB
+import ray
 import argparse
 import os
 import sys
 import shutil
 import numpy as np
 import logging
+import torch
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
-
-import torch
-from torch.utils.data.dataloader import DataLoader
-
-import ray
-from ray.tune.suggest.bohb import TuneBOHB
-from ray.tune.schedulers import HyperBandForBOHB
-from ray.tune.logger import CSVLogger, JsonLogger
-
-from models.modules import BaseModule
-from models.lstm import LSTM
-from models.trainer import Trainer
-from data.data_loader import Data
-from experiments.hydrology.experiment_config import get_search_space, get_config
-from summarize_runs import summarize
 
 
 def parse_args():
@@ -69,110 +62,11 @@ def parse_args():
     return args
 
 
-class Emulator(ray.tune.Trainable):
-    # Hard-coded configuration; used to bypass the '_setup' method below,
-    # as we dont want to pass all the hard-coded arguments as search space.
-    # Needs to be set before ray.tune.run(Emulator, ...) is called, usig
-    # Emulator:set_hc_config. Can this be avoided?
-    # TODO: Find better way to do this.
-    hc_config = None
-
-    @classmethod
-    def set_hc_config(cls, hc_config):
-        cls.hc_config = hc_config
-
-    def _setup(self, config):
-
-        if self.hc_config is None:
-            raise ValueError(
-                'Set hard-coded configuration using `Emulator:set_hc_config` '
-                'before initializing `Emulator`.')
-
-        self.config = config
-
-        model = LSTM(
-            input_size=len(self.hc_config['dynamic_vars']),
-            hidden_size=config['hidden_size'],
-            num_layers=config['num_layers'],
-            output_size=1,
-            dropout=config['dropout']
-        )
-
-        if not isinstance(model, BaseModule):
-            raise ValueError('The model is not a subclass of models.modules:BaseModule')
-
-        train_loader = get_dataloader(
-            self.hc_config,
-            partition_set='train',
-            batch_size=self.hc_config['batch_size'],
-            shuffle=True,
-            drop_last=True,
-            num_workers=self.hc_config['num_workers'],
-            pin_memory=self.hc_config['pin_memory']
-        )
-        test_loader = get_dataloader(
-            self.hc_config,
-            partition_set='test',
-            batch_size=self.hc_config['batch_size'],
-            shuffle=True,
-            drop_last=False,
-            num_workers=self.hc_config['num_workers'],
-            pin_memory=self.hc_config['pin_memory']
-        )
-
-        if self.hc_config['optimizer'] == 'Adam':
-            optimizer = torch.optim.Adam(model.parameters(), config['learning_rate'])
-        else:
-            raise ValueError(f'Optimizer {self.hc_config["optimizer"]} not defined.')
-
-        if self.hc_config['loss_fn'] == 'MSE':
-            loss_fn = torch.nn.MSELoss()
-        else:
-            raise ValueError(f'Loss function {self.hc_config["loss_fn"]} not defined.')
-
-        self.trainer = Trainer(
-            train_loader=train_loader,
-            test_loader=test_loader,
-            model=model,
-            optimizer=optimizer,
-            loss_fn=loss_fn,
-            train_seq_length=self.hc_config['train_slice_length'],
-            is_test=self.hc_config['is_test']
-        )
-
-    def _train(self):
-        train_stats = self.trainer.train_epoch()
-        test_stats = self.trainer.test_epoch()
-
-        stats = {**train_stats, **test_stats}
-
-        # Disable early stopping before 'grace period' is reched.
-        if stats['epoch'] < self.hc_config['grace_period']:
-            stats['patience_counter'] = -1
-
-        return stats
-
-    def _save(self, path):
-        path = os.path.join(path, 'model.pth')
-        return self.trainer.save(path)
-
-    def _restore(self, path):
-        self.trainer.restore(path)
-
-
-def get_dataloader(config, partition_set, **kwargs):
-    dataset = Data(config=config, partition_set=partition_set, is_tune=True)
-    dataloader = DataLoader(
-        dataset=dataset,
-        **kwargs
-    )
-    return dataloader
-
-
 def tune(args):
 
     search_space = get_search_space(args.config_name)
     config = get_config(args.config_name)
+    config.update({'is_tune': True})
 
     store = f'{config["store"]}/{config["experiment_name"]}/{args.config_name}/tune/'
     if args.overwrite:
@@ -189,8 +83,6 @@ def tune(args):
         'store': store,
         'is_test': args.test
     })
-
-    Emulator.set_hc_config(config)
 
     ngpu = torch.cuda.device_count()
     ncpu = os.cpu_count()
@@ -233,12 +125,13 @@ def tune(args):
     ray.tune.run(
         Emulator,
         name=config['experiment_name'],
+        config={'hc_config': config},
         resources_per_trial={
             'cpu': config['ncpu_per_run'],
             'gpu': config['ngpu_per_run']},
         num_samples=max_concurrent if args.test else config['num_samples'],
         local_dir=store,
-        raise_on_failed_trial=True,
+        raise_on_failed_trial=False,
         verbose=1,
         with_server=False,
         ray_auto_init=False,

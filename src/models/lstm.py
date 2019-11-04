@@ -26,7 +26,6 @@ class LSTM(BaseModule):
 
     def forward(self, x):
         out, _ = self.lstm(x)
-        out = nn.Tanh(out)
-        out = self.linear(out)
+        out = self.linear(out.tanh())
 
         return out

@@ -20,7 +20,7 @@ class Data(Dataset):
     locations (mask != 0 & mask != fold) are used for training.
 
     The temporal partition (defined in the config file) is fixed, 'partition_sets' dfines
-    whether traiing or testing period is selected.
+    whether traiing or validation period is selected.
 
 
     Parameters
@@ -28,7 +28,7 @@ class Data(Dataset):
     config (str):
         Path to configuration file.
     partition_set (str):
-        Cross validation partition set, one of 'test' | 'test'.
+        Cross validation partition set, one of 'train' | 'eval'.
     fold (int):
         The spatial cross-validation fold. Must correspond to values in the mask. See 'Notes'
         for more details.
@@ -44,8 +44,8 @@ class Data(Dataset):
             fold=None,
             is_tune=False):
 
-        if partition_set not in ['train', 'test']:
-            raise ValueError(f'Argument `partition_set`: Mut be one of: train | test.')
+        if partition_set not in ['train', 'eval']:
+            raise ValueError(f'Argument `partition_set`: Mut be one of: train | eval.')
 
         if is_tune ^ (fold is None):
             raise ValueError('Either pass argument `fold` OR set `is_tune=True`.')
@@ -73,7 +73,7 @@ class Data(Dataset):
 
         # Apply warmup period:
         # - if training set: warmup period is added to training period start.
-        # - if testing set: warmup period is subtracted from period start.
+        # - if evaludation set: warmup period is subtracted from period start.
         if partition_set == 'train':
             warmup_start = self.part_range[0]
             warmup_end = f'{int(self.part_range[0][:4])+config["warmup"]}{self.part_range[0][4:]}'
@@ -138,9 +138,17 @@ class Data(Dataset):
                 self.t_start:self.t_end, lat, lon]) for var in self.dyn_features_names
         ], axis=-1)
 
-        dyn_target = self.dyn_target[self.dyn_target_name][self.t_start:self.t_end, lat, lon]
+        dyn_target = self.dyn_target[self.dyn_target_name][self.t_start+:self.t_end, lat, lon]
 
-        return dyn_features, dyn_target
+        return dyn_features, dyn_target, (lat, lon)
+
+    def get_empty_xr(self):
+        ds = xr.open_zarr(
+            self.dyn_target_path)[[self.dyn_target_name]].isel(
+                time=slice(self.t_start + self.num_warmup_steps, self.t_end))
+        ds[self.dyn_target_name].values = np.nan
+        ds['self.dyn_target_name' + '_obs'] = ds[self.dyn_target_name]
+        return ds
 
 
 def get_sparse_grid(x, gap_size):

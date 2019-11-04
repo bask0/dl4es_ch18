@@ -15,6 +15,9 @@ import numpy as np
 
 # from experiments.hydrology.experiment_config import get_config
 
+TRAIN_LOSS_NAME = 'loss_train'
+EVAL_LOSS_NAME = 'loss_eval'
+
 
 def parse_args() -> Dict[str, Any]:
     """Parse arguments.
@@ -27,8 +30,8 @@ def parse_args() -> Dict[str, Any]:
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        '-s',
-        '--store',
+        '-p',
+        '--path',
         type=str,
         help='Run directory. Either pass `experiment` and `name` or `store`.'
     )
@@ -37,7 +40,7 @@ def parse_args() -> Dict[str, Any]:
         '-m',
         '--metric',
         type=str,
-        default='loss_test',
+        default=EVAL_LOSS_NAME,
         help='The metric that is minimized, default is `loss (valid)`.'
     )
 
@@ -48,7 +51,7 @@ def parse_args() -> Dict[str, Any]:
 
 def summarize(
         store,
-        metric: str = 'loss_test') -> None:
+        metric: str = EVAL_LOSS_NAME) -> None:
 
     if store[-1] == '/':
         store = store[:-1]
@@ -140,8 +143,8 @@ def plot_all(runs: pd.core.frame.DataFrame, metric: str, savepath: str) -> None:
         0.5, 0.95, 'VALIDATION', transform=ax[1].transAxes,
         horizontalalignment='center', verticalalignment='top', bbox=box)
 
-    train_name = 'loss_test'
-    valid_name = 'loss_train'
+    train_name = TRAIN_LOSS_NAME
+    valid_name = EVAL_LOSS_NAME
 
     runs.groupby(['uid']).plot(
         x='epoch', y=train_name, ax=ax[0], legend=False)
@@ -150,7 +153,7 @@ def plot_all(runs: pd.core.frame.DataFrame, metric: str, savepath: str) -> None:
 
     ymin = np.min((
         np.min(runs[train_name]),
-        np.min(runs[valid_name]))) * 0.98
+        np.min(runs[valid_name]))) * 0.95
     ymax = np.max(
         (np.percentile(runs[train_name], 99), np.percentile(runs[valid_name], 99)))
     xmin = np.min(runs['epoch'])-np.max(runs['epoch'])*0.01
@@ -175,22 +178,23 @@ def plot_single(single_run: pd.core.frame.DataFrame, metric: str, savepath: str)
         0.5, 0.95, 'TRAINING', transform=ax[0].transAxes,
         horizontalalignment='center', verticalalignment='top', bbox=box)
     ax[1].text(
-        0.5, 0.95, 'TESTING', transform=ax[1].transAxes,
+        0.5, 0.95, 'EVALUATION', transform=ax[1].transAxes,
         horizontalalignment='center', verticalalignment='top', bbox=box)
 
-    train_name = 'loss_test'
-    valid_name = 'loss_train'
+    train_name = TRAIN_LOSS_NAME
+    valid_name = EVAL_LOSS_NAME
 
     single_run.plot(x='epoch', y=train_name, ax=ax[0], legend=False)
     single_run.plot(x='epoch', y=valid_name, ax=ax[1], legend=False)
 
+    ymin = np.min((np.min(single_run[train_name]), np.min(single_run[valid_name]))) * 0.98
     ymax = np.max((np.percentile(single_run[train_name], 99), np.percentile(
         single_run[valid_name], 99)))
     xmin = np.min(single_run['epoch'])-np.max(single_run['epoch'])*0.01
     xmax = np.max(single_run['epoch'])*1.01
 
     ax[0].set_xlim(xmin, xmax)
-    ax[0].set_ylim(None, ymax)
+    ax[0].set_ylim(ymin, ymax)
     ax[0].yaxis.set_label_coords(-0.15, 0.5, transform=ax[0].transAxes)
     ax[0].set_ylabel('loss', bbox=box)
 
@@ -201,4 +205,4 @@ if __name__ == '__main__':
 
     args = parse_args()
 
-    summarize(args.store, args.metric)
+    summarize(args.path, args.metric)
