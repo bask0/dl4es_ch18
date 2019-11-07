@@ -93,8 +93,8 @@ class Emulator(tune.Trainable):
             self._save(os.path.join(self.logdir, 'final'))
 
     def _predict(self):
-        
-        predictions =  self.trainer.predict()
+
+        predictions = self.trainer.predict()
         return predictions['predictions']
 
     def _save(self, path):

@@ -1,11 +1,9 @@
 import torch
 from torch import nn
 from torch.nn import init
-from torch._jit_internal import weak_module
 import numpy as np
 
 
-@weak_module
 class BaseModule(nn.Module):
     """
     Basic Pytorch Module, meant to be subclassed.

@@ -1,12 +1,13 @@
 from models.emulator import Emulator
 from experiments.hydrology.experiment_config import get_config
-import ray
 import argparse
+import ray
 import os
 import pickle
 import shutil
+from utils.summarize_runs import summarize_run
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 
 def parse_args():
@@ -77,13 +78,18 @@ def tune(args):
 
     config.update({
         'store': store,
-        'is_test': args.test
+        'is_test': False
     })
 
+    model_path = os.path.join(os.path.dirname(cv_store), 'model.pth')
+    print('Restoring model from: ', model_path)
     e = Emulator(best_config)
-    e._restore(os.path.join(cv_store, 'final', 'model.pth'))
+    e._restore(model_path)
+    print('Predicting...')
     predictions = e._predict()
     predictions.to_netcdf(os.path.join(store, 'predictions.nc'))
+
+    summarize_run(store)
 
 
 if __name__ == '__main__':
@@ -91,8 +97,6 @@ if __name__ == '__main__':
 
     ray.init(include_webui=False, object_store_memory=int(50e9))
 
-    store, metric_name = tune(args)
+    tune(args)
 
     ray.shutdown()
-
-    # summarize(store, metric_name)

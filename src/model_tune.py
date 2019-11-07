@@ -145,7 +145,7 @@ if __name__ == '__main__':
 
     ray.init(include_webui=False, object_store_memory=int(50e9))
 
-    store, metric_name = tune(args)
+    tune(args)
 
     ray.shutdown()
 

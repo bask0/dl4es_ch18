@@ -43,12 +43,12 @@ class Trainer(object):
                 # Targets loaded to GPU during forward pass.
                 targets = targets[:, t_start:t_end].cuda(non_blocking=True)
 
-            if torch.isnan(features).any():
-                raise ValueError(
-                    'NaN in features in training, training stopped.')
-            if torch.isnan(targets).any():
-                raise ValueError(
-                    'NaN in target in training, training stopped.')
+            # if torch.isnan(features).any():
+            #     raise ValueError(
+            #         'NaN in features in training, training stopped.')
+            # if torch.isnan(targets).any():
+            #     raise ValueError(
+            #         'NaN in target in training, training stopped.')
 
             pred = self.model(features)
             loss = self.loss_fn(
@@ -92,12 +92,12 @@ class Trainer(object):
                 features = features.cuda(non_blocking=True)
                 targets = targets.cuda(non_blocking=True)
 
-            if torch.isnan(features).any():
-                raise ValueError(
-                    'NaN in features in evaluation, training stopped.')
-            if torch.isnan(targets).any():
-                raise ValueError(
-                    'NaN in targets in evaluation, training stopped.')
+            # if torch.isnan(features).any():
+            #     raise ValueError(
+            #         'NaN in features in evaluation, training stopped.')
+            # if torch.isnan(targets).any():
+            #     raise ValueError(
+            #         'NaN in targets in evaluation, training stopped.')
 
             pred = self.model(features)
             loss = self.loss_fn(
@@ -136,12 +136,12 @@ class Trainer(object):
                 features = features.cuda(non_blocking=True)
                 targets = targets.cuda(non_blocking=True)
 
-            if torch.isnan(features).any():
-                raise ValueError(
-                    'NaN in features in evaluation, training stopped.')
-            if torch.isnan(targets).any():
-                raise ValueError(
-                    'NaN in targets in evaluation, training stopped.')
+            # if torch.isnan(features).any():
+            #     raise ValueError(
+            #         'NaN in features in evaluation, training stopped.')
+            # if torch.isnan(targets).any():
+            #     raise ValueError(
+            #         'NaN in targets in evaluation, training stopped.')
 
             pred = self.model(features)
             pred = pred[:, self.eval_loader.dataset.num_warmup_steps:, 0]
@@ -157,8 +157,8 @@ class Trainer(object):
 
             del loss
 
-            P[varname].values[lat, lon] = pred
-            P[varname_obs].values[lat, lon] = targets
+            P[varname].values[:, lat, lon] = pred.detach().cpu().numpy().T
+            P[varname_obs].values[:, lat, lon] = targets.detach().cpu().numpy().T
 
         mean_loss = total_loss / (step + 1)
 

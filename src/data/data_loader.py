@@ -138,7 +138,7 @@ class Data(Dataset):
                 self.t_start:self.t_end, lat, lon]) for var in self.dyn_features_names
         ], axis=-1)
 
-        dyn_target = self.dyn_target[self.dyn_target_name][self.t_start+:self.t_end, lat, lon]
+        dyn_target = self.dyn_target[self.dyn_target_name][self.t_start:self.t_end, lat, lon]
 
         return dyn_features, dyn_target, (lat, lon)
 
@@ -147,7 +147,7 @@ class Data(Dataset):
             self.dyn_target_path)[[self.dyn_target_name]].isel(
                 time=slice(self.t_start + self.num_warmup_steps, self.t_end))
         ds[self.dyn_target_name].values = np.nan
-        ds['self.dyn_target_name' + '_obs'] = ds[self.dyn_target_name]
+        ds[self.dyn_target_name + '_obs'] = ds[self.dyn_target_name]
         return ds
 
 
