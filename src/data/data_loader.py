@@ -149,7 +149,7 @@ class Data(Dataset):
         ds = xr.open_zarr(
             self.dyn_target_path)[[self.dyn_target_name]].isel(
                 time=slice(self.t_start + self.num_warmup_steps, self.t_end))
-        ds[self.dyn_target_name].values = np.nan
+        ds[self.dyn_target_name].values[:] = np.nan
         ds[self.dyn_target_name + '_obs'] = ds[self.dyn_target_name]
         return ds
 

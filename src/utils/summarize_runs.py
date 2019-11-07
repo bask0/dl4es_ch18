@@ -7,6 +7,7 @@ from typing import Dict, Any
 from ray.tune.analysis import ExperimentAnalysis
 import os
 import shutil
+import glob2
 from shutil import copyfile
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -80,6 +81,18 @@ def parse_args() -> Dict[str, Any]:
     args = parser.parse_args()
 
     return args
+
+
+def summarize_run(store):
+    exp_state_file = glob2.glob(os.path.join(
+        store, '*', 'experiment_state-*.json'))
+    if len(exp_state_file) != 1:
+        raise ValueError(
+            f'Cannot sumarize runs - number of experiment state files != 1 \n{exp_state_file}')
+    summarize(
+        path=exp_state_file[0],
+        infer_cp_dir=True,
+        overwrite=True)
 
 
 def summarize(
