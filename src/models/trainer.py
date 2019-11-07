@@ -39,7 +39,8 @@ class Trainer(object):
             t_end = t_start + self.train_loader.dataset.num_warmup_steps + self.train_seq_length
 
             if torch.cuda.is_available():
-                features = features[:, t_start:t_end, :].cuda(non_blocking=True)
+                features = features[:, t_start:t_end, :].cuda(
+                    non_blocking=True)
                 # Targets loaded to GPU during forward pass.
                 targets = targets[:, t_start:t_end].cuda(non_blocking=True)
 

@@ -37,6 +37,7 @@ class Data(Dataset):
         'Notes' for more details. In this case, the 'fold' argument has no effect.
 
     """
+
     def __init__(
             self,
             config,
@@ -45,10 +46,12 @@ class Data(Dataset):
             is_tune=False):
 
         if partition_set not in ['train', 'eval']:
-            raise ValueError(f'Argument `partition_set`: Mut be one of: train | eval.')
+            raise ValueError(
+                f'Argument `partition_set`: Mut be one of: train | eval.')
 
         if is_tune ^ (fold is None):
-            raise ValueError('Either pass argument `fold` OR set `is_tune=True`.')
+            raise ValueError(
+                'Either pass argument `fold` OR set `is_tune=True`.')
 
         self.dyn_features_names = config['dynamic_vars']
         self.dyn_features_path = config['dynamic_path']
