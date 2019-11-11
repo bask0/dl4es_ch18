@@ -23,13 +23,19 @@ def get_search_space(config_name='default'):
             # LSTM hidden size.
             CS.UniformIntegerHyperparameter(
                     'hidden_size', lower=20, upper=320, q=20),
-                # LSTM number of layers.
-                CS.UniformIntegerHyperparameter(
-                    'num_layers', lower=1, upper=3, q=1),
-                # Dropout probability.
-                CS.UniformFloatHyperparameter(
-                    'dropout', lower=0.0, upper=0.5, q=0.1)
-            ])
+            # LSTM number of layers.
+            CS.UniformIntegerHyperparameter(
+                'num_layers', lower=1, upper=3, q=1),
+            # Dropout probability for input.
+            CS.UniformFloatHyperparameter(
+                'dropout_in', lower=0.0, upper=0.7, q=0.1),
+            # Dropout probability for input.
+            CS.UniformFloatHyperparameter(
+                'dropout_lstm', lower=0.0, upper=0.7, q=0.1),
+            # Dropout probability for input.
+            CS.UniformFloatHyperparameter(
+                'dropout_linear', lower=0.0, upper=0.7, q=0.1)
+        ])
 
         # Optim args.
         config_space.add_hyperparameters([
@@ -82,19 +88,19 @@ def get_config(config_name):
         # - max_t: Maximum resources (in terms of epochs).
         # - Successive halving factor.
         # - num_samples (https://github.com/ray-project/ray/issues/5775)
-        'max_t': 20,
-        'halving_factor': 2,
-        'num_samples': 40,
+        'max_t': 81,
+        'halving_factor': 3,
+        'num_samples': 81 + 27 + 9 + 6 + 5,
         # Early stopping arguments: This applies to prediction only, where
         # the best configuration from BOHB is used.
         # - grace_period: Minimum number of epochs.
         # - patience: After 'grace_period' number of epochs, training is stopped if
         #   more than 'patience' epochs have worse performance than current best, than
         #   predicitons are made.
-        'grace_period': 10,
-        'patience': 8,
+        'grace_period': 0,
+        'patience': 5,
         # Number of CPUs to use per run.
-        'ncpu_per_run': 20,
+        'ncpu_per_run': 10,
         # Number of GPUs to use per run (0, 1].
         'ngpu_per_run': 1.0,
         # Number of workers per data loader.
@@ -106,8 +112,10 @@ def get_config(config_name):
         'warmup': 5,
         # The length of the training sequence, will be used to randomly subset training batch.
         'train_slice_length': 10 * 365,
+        # Number of batches per training epoch. This is equivalent to setting a logging frequency.
+        'train_sample_size': 200,
         # Whether to pin memory; see torch.utils.data.dataloader:Dataloader.
-        'pin_memory': False,
+        'pin_memory': True,
         # Data configuration:
         'static_vars': ['PFT', 'soilproperties'],
         'static_path': '/scratch/dl_chapter14/input/static',

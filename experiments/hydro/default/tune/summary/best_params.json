@@ -1,5 +1,7 @@
 {
-  "dropout": 0.0,
+  "dropout_in": 0.4,
+  "dropout_linear": 0.0,
+  "dropout_lstm": 0.0,
   "hc_config": {
     "batch_size": 32,
     "dynamic_path": "/scratch/dl_chapter14/input/dynamic/gswp3.zarr",
@@ -14,28 +16,28 @@
       "PSurf"
     ],
     "experiment_name": "hydro",
-    "grace_period": 10,
-    "halving_factor": 2,
+    "grace_period": 0,
+    "halving_factor": 3,
     "is_test": false,
     "is_tune": true,
     "loss_fn": "MSE",
     "mask": "mask",
     "mask_path": "/scratch/dl_chapter14/mask.nc",
-    "max_t": 20,
+    "max_t": 81,
     "metric": "loss_eval",
     "msc_path": "/scratch/dl_chapter14/input/msc",
     "msc_vars": [
       "LAI",
       "Cloudcover"
     ],
-    "ncpu_per_run": 20,
+    "ncpu_per_run": 10,
     "ngpu_per_run": 1.0,
     "noise_std": 0.0,
-    "num_samples": 40,
+    "num_samples": 128,
     "num_workers": 8,
     "optimizer": "Adam",
-    "patience": 8,
-    "pin_memory": false,
+    "patience": 3,
+    "pin_memory": true,
     "shuffle": 0,
     "static_path": "/scratch/dl_chapter14/input/static",
     "static_vars": [
@@ -59,10 +61,12 @@
         "2000-12-31"
       ]
     },
+    "train_sample_size": 200,
     "train_slice_length": 3650,
     "warmup": 5
   },
-  "hidden_size": 220,
+  "hidden_size": 320,
   "learning_rate": 0.01,
-  "num_layers": 3
+  "num_layers": 1,
+  "weight_decay": 0.001
 }

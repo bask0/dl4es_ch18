@@ -35,6 +35,8 @@ class Data(Dataset):
     is_tune (bool):
         If 'True', a subset fo the data will be sampled for tuning of hyperparameters. See
         'Notes' for more details. In this case, the 'fold' argument has no effect.
+    is_test: bool
+        If test, a subset of the data is used (Europe).
 
     """
 
@@ -43,7 +45,8 @@ class Data(Dataset):
             config,
             partition_set,
             fold=None,
-            is_tune=False):
+            is_tune=False,
+            is_test=False):
 
         if partition_set not in ['train', 'eval']:
             raise ValueError(
@@ -92,8 +95,13 @@ class Data(Dataset):
         self.num_warmup_steps = self.t_wamup_end - self.t_start
 
         mask = xr.open_dataset(self.mask_path)
-
         mask = mask.mask
+
+        if is_test:
+            # Set mask outside Europe to 0.
+            print('Test run: training on lat > 0 & lon > 0')
+            mask = mask.where((mask.lat > 0) & (mask.lon > 0), 0, drop=False)
+
         folds = np.setdiff1d(np.unique(mask), 0)
 
         if any(folds < 0):
@@ -123,12 +131,28 @@ class Data(Dataset):
                 raise ValueError(
                     f'Fold `{fold}` not found in mask with unique values `{folds}`.')
 
-            if partition_set == 'train':
-                mask_select = np.setdiff1d(np.unique(mask), fold)
-            else:
-                mask_select = [fold]
+            mask_select = [fold]
 
         self.coords = np.argwhere(np.isin(mask, mask_select))
+
+        self.dyn_features_stats = {
+            'Rainf': {'mean': 2.199103, 'std': 6.093197},
+            'Snowf': {'mean': 0.20465073, 'std': 1.0048206},
+            'SWdown': {'mean': 164.22249, 'std': 109.37948},
+            'LWdown': {'mean': 303.78818, 'std': 92.66672},
+            'Tair': {'mean': 6.3912563, 'std': 20.174139},
+            'Wind': {'mean': 6.375285, 'std': 3.6239264},
+            'Qair': {'mean': 0.0075566475, 'std': 0.0061429683},
+            'PSurf': {'mean': 96840.62, 'std': 9392.585}
+        }
+
+        self.dyn_target_stats = {
+            'et': {'mean': 1.44742935e-05, 'std': 0.0011524742},
+            'mrro': {'mean': 1.01971955e-05, 'std': 3.7351343e-05},
+            'rzwc': {'mean': 321.46603, 'std': 226.93504},
+            'tws': {'mean': 15351.493, 'std': 2616.319},
+            'wtd': {'mean': -12.489375, 'std': 20.281696}
+        }[self.dyn_target_name]
 
     def __len__(self):
         return self.coords.shape[0]
@@ -137,21 +161,23 @@ class Data(Dataset):
         lat, lon = self.coords[inx]
 
         dyn_features = np.stack([
-            (self.dyn_features[var][var][
-                self.t_start:self.t_end, lat, lon]) for var in self.dyn_features_names
+            (
+                self.dyn_features[var][var][
+                    self.t_start: self.t_end, lat, lon] - self.dyn_features_stats[var]['mean']
+            ) / self.dyn_features_stats[var]['std'] for var in self.dyn_features_names
         ], axis=-1)
 
         dyn_target = self.dyn_target[self.dyn_target_name][self.t_start:self.t_end, lat, lon]
 
         return dyn_features, dyn_target, (lat, lon)
 
-    def get_empty_xr(self):
-        ds = xr.open_zarr(
-            self.dyn_target_path)[[self.dyn_target_name]].isel(
+    def create_empty_xr(self, target_path):
+        ds = xr.open_zarr(self.dyn_target_path)[[self.dyn_target_name]].isel(
                 time=slice(self.t_start + self.num_warmup_steps, self.t_end))
         ds[self.dyn_target_name].values[:] = np.nan
         ds[self.dyn_target_name + '_obs'] = ds[self.dyn_target_name]
-        return ds
+
+        ds.to_zarr(target_path)
 
 
 def get_sparse_grid(x, gap_size):
@@ -159,8 +185,8 @@ def get_sparse_grid(x, gap_size):
     nlon = len(x.lon)
     r = np.zeros((nlat, nlon), dtype=int)
 
-    for lat in np.arange(0, nlat, gap_size * 2):
-        for lon in np.arange(0, nlon, gap_size * 2):
+    for lat in np.arange(0, nlat - 1 - gap_size, gap_size * 2):
+        for lon in np.arange(0, nlon - 1 - gap_size, gap_size * 2):
             r[lat, lon] = 1
             r[lat + gap_size, lon + gap_size] = 2
 

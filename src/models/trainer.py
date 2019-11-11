@@ -1,5 +1,8 @@
 
 import torch
+import numpy as np
+import zarr
+import sys
 
 
 class Trainer(object):
@@ -11,7 +14,7 @@ class Trainer(object):
             optimizer,
             loss_fn,
             train_seq_length,
-            is_test):
+            train_sample_size):
         self.train_loader = train_loader
         self.eval_loader = eval_loader
         self.model = model.cuda() if torch.cuda.is_available() else model
@@ -19,12 +22,13 @@ class Trainer(object):
         self.optimizer = optimizer
         self.loss_fn = loss_fn
         self.train_seq_length = train_seq_length
-        self.is_test = is_test
-
-        self.num_batches_per_epoch = 2 if is_test else 10e10
+        self.train_sample_size = train_sample_size
 
         self.epoch = 0
         self.global_step = 0
+
+        self.patience_counter = 0
+        self.best_loss = None
 
     def train_epoch(self):
         self.model.train()
@@ -34,8 +38,8 @@ class Trainer(object):
         for step, (features, targets, _) in enumerate(self.train_loader):
             self.optimizer.zero_grad()
 
-            t_start = torch.randint(
-                0, int(features.size(1) - self.train_loader.dataset.num_warmup_steps - self.train_seq_length), (1, ))
+            t_start = int(torch.randint(
+                0, int(features.size(1) - self.train_loader.dataset.num_warmup_steps - self.train_seq_length), (1, )))
             t_end = t_start + self.train_loader.dataset.num_warmup_steps + self.train_seq_length
 
             if torch.cuda.is_available():
@@ -52,6 +56,8 @@ class Trainer(object):
             #         'NaN in target in training, training stopped.')
 
             pred = self.model(features)
+            pred = self.unstandardize_target(pred)
+
             loss = self.loss_fn(
                 pred[:, self.train_loader.dataset.num_warmup_steps:, 0],
                 targets[:, self.train_loader.dataset.num_warmup_steps:])
@@ -69,7 +75,7 @@ class Trainer(object):
 
             del loss
 
-            if step > self.num_batches_per_epoch:
+            if step > self.train_sample_size:
                 break
 
         mean_loss = total_loss / (step + 1)
@@ -101,6 +107,8 @@ class Trainer(object):
             #         'NaN in targets in evaluation, training stopped.')
 
             pred = self.model(features)
+            pred = self.unstandardize_target(pred)
+
             loss = self.loss_fn(
                 pred[:, self.eval_loader.dataset.num_warmup_steps:, 0],
                 targets[:, self.eval_loader.dataset.num_warmup_steps:])
@@ -110,28 +118,42 @@ class Trainer(object):
 
             total_loss += loss.item()
 
-            del loss
-
-            if step > self.num_batches_per_epoch:
-                break
-
         mean_loss = total_loss / (step + 1)
 
+        perc_improved = self.early_stopping(mean_loss)
+
         return {
-            'loss_eval': mean_loss
+            'loss_eval': mean_loss,
+            'patience_counter': self.patience_counter,
+            'perc_improved': perc_improved,
+            'best_loss': self.best_loss
         }
 
     @torch.no_grad()
-    def predict(self):
+    def predict(self, target_file):
         self.model.eval()
 
-        P = self.eval_loader.dataset.get_empty_xr()
+        print('Prediction are saved to: ', target_file)
+        self.eval_loader.dataset.create_empty_xr(target_file)
+
+        P = zarr.open_group(target_file)
         varname = self.eval_loader.dataset.dyn_target_name
-        varname_obs = self.eval_loader.dataset.dyn_target_name + '_obs'
+        varname_obs = varname + '_obs'
+
+        pred_array = np.zeros(P[varname].shape, dtype=np.float32)
+        obs_array = np.zeros(P[varname_obs].shape, dtype=np.float32)
+
+        pred_array.fill(np.nan)
+        obs_array.fill(np.nan)
 
         total_loss = 0
 
         for step, (features, targets, (lat, lon)) in enumerate(self.eval_loader):
+
+            print_progress(
+                np.min((
+                    (step + 1) * self.eval_loader.batch_size, len(self.eval_loader.dataset)
+                )), len(self.eval_loader.dataset), 'predicting')
 
             if torch.cuda.is_available():
                 features = features.cuda(non_blocking=True)
@@ -145,28 +167,52 @@ class Trainer(object):
             #         'NaN in targets in evaluation, training stopped.')
 
             pred = self.model(features)
+            pred = self.unstandardize_target(pred)
             pred = pred[:, self.eval_loader.dataset.num_warmup_steps:, 0]
+
             targets = targets[:, self.eval_loader.dataset.num_warmup_steps:]
             loss = self.loss_fn(
                 pred,
                 targets)
 
             if torch.isnan(loss):
-                raise ValueError('Eval loss is NaN, training stopped.')
+                raise ValueError('Eval loss is NaN.')
 
             total_loss += loss.item()
 
-            del loss
+            lat = lat.numpy()
+            lon = lon.numpy()
 
-            P[varname].values[:, lat, lon] = pred.detach().cpu().numpy().T
-            P[varname_obs].values[:, lat, lon] = targets.detach().cpu().numpy().T
+            pred_array[:, lat, lon] = pred.cpu().numpy().T
+            obs_array[:, lat, lon] = targets.cpu().numpy().T
+
+        print('\nWriting to file...')
+        P[varname][:] = pred_array
+        P[varname_obs][:] = obs_array
 
         mean_loss = total_loss / (step + 1)
 
+        print('Done.')
+
         return {
-            'loss_eval': mean_loss,
-            'predictions': P
+            'loss_eval': mean_loss
         }
+
+    def early_stopping(self, loss):
+
+        if self.best_loss is not None:
+            perc_improved = 100 * (1 - loss / self.best_loss)
+            if perc_improved < 0.01:
+                self.patience_counter += 1
+            else:
+                self.patience_counter = 0
+            if loss < self.best_loss:
+                self.best_loss = loss
+        else:
+            self.best_loss = loss
+            self.perc_improved = perc_improved = 0
+
+        return perc_improved
 
     def save(self, checkpoint: str) -> None:
         """Saves the model at the provided checkpoint.
@@ -185,6 +231,8 @@ class Trainer(object):
             {
                 'epoch': self.epoch,
                 'global_step': self.global_step,
+                'patience_counter': self.patience_counter,
+                'best_loss': self.best_loss,
                 'model_state_dict': self.model.state_dict(),
                 'optimizer_state_dict': self.optimizer.state_dict(),
                 #'scheduler_state_dict': self.scheduler.state_dict()
@@ -214,3 +262,57 @@ class Trainer(object):
 
         self.epoch = checkpoint['epoch']
         self.global_step = checkpoint['global_step']
+        self.patience_counter = checkpoint['patience_counter']
+        self.best_loss = checkpoint['best_loss']
+
+    def unstandardize_target(self, target):
+        return target * self.train_loader.dataset.dyn_target_stats['std'] + \
+            self.train_loader.dataset.dyn_target_stats['mean']
+
+
+def rprint(value):
+    """Similar to print function but overwrites last line.
+
+    Parameters
+    ----------
+    value
+        Value to print.
+
+    """
+
+    sys.stdout.write(f'\r{value}')
+    sys.stdout.flush()
+
+
+def print_progress(i: int, n_total: int, prefix: str) -> None:
+    """Print progress bar.
+
+    E.g. with ``prefix`` = 'training':
+
+    training:  97% ||||||||||||||||||||||||||||||||||||||||||||||||   |
+
+    Parameters
+    ----------
+    i
+        Current step.
+    n_total
+        Total number of steps.
+    prefix
+        Printed in front of progress bar, limited to 20 characters.
+
+    """
+    perc = np.floor((i + 1) / n_total * 100)
+    n_print = 50
+
+    n_done = int(np.floor(perc / 100 * n_print))
+    n_to_go = n_print - n_done
+
+    if perc != 100:
+        n_to_go = n_to_go-1
+        msg = f'{perc:3.0f}% |{"|"*n_done}>{" "*n_to_go}' + '|'
+    else:
+        msg = f'{perc:3.0f}% |{"|"*n_done}{" "*n_to_go}' + '|'
+
+    rprint(f'{prefix:20s} ' + msg)
+    if perc == 100:
+        print('\n')

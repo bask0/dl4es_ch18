@@ -21,7 +21,9 @@ class Emulator(tune.Trainable):
             hidden_size=config['hidden_size'],
             num_layers=config['num_layers'],
             output_size=1,
-            dropout=config['dropout']
+            dropout_in=config['dropout_in'],
+            dropout_lstm=config['dropout_lstm'],
+            dropout_linear=config['dropout_linear']
         )
 
         if not isinstance(model, BaseModule):
@@ -34,6 +36,7 @@ class Emulator(tune.Trainable):
             self.hc_config,
             partition_set='train',
             is_tune=self.is_tune,
+            is_test=self.hc_config['is_test'],
             fold=folds['train'],
             batch_size=self.hc_config['batch_size'],
             shuffle=True,
@@ -45,9 +48,10 @@ class Emulator(tune.Trainable):
             self.hc_config,
             partition_set='eval',
             is_tune=self.is_tune,
-            fold=folds['train'],
+            is_test=self.hc_config['is_test'],
+            fold=folds['eval'],
             batch_size=self.hc_config['batch_size'],
-            shuffle=True,
+            shuffle=False,
             drop_last=False,
             num_workers=self.hc_config['num_workers'],
             pin_memory=self.hc_config['pin_memory']
@@ -73,7 +77,7 @@ class Emulator(tune.Trainable):
             optimizer=optimizer,
             loss_fn=loss_fn,
             train_seq_length=self.hc_config['train_slice_length'],
-            is_test=self.hc_config['is_test']
+            train_sample_size=2 if self.hc_config['is_test'] else self.hc_config['train_sample_size']
         )
 
     def _train(self):
@@ -90,12 +94,12 @@ class Emulator(tune.Trainable):
 
     def _stop(self):
         if not self.is_tune:
-            self._save(os.path.join(self.logdir, 'final'))
+            self._save(os.path.dirname(self.logdir))
 
-    def _predict(self):
+    def _predict(self, prediction_file):
 
-        predictions = self.trainer.predict()
-        return predictions['predictions']
+        self.trainer.predict(
+            prediction_file)
 
     def _save(self, path):
         path = os.path.join(path, 'model.pth')
@@ -116,11 +120,19 @@ def get_cv_folds(fold):
         raise ValueError(f'Argument `fold`: invalid value: {fold}')
 
 
-def get_dataloader(config, partition_set, is_tune, fold=None, **kwargs):
+def get_dataloader(
+        config,
+        partition_set,
+        is_tune,
+        is_test=False,
+        fold=None,
+        **kwargs):
+
     dataset = Data(
         config=config,
         partition_set=partition_set,
         is_tune=is_tune,
+        is_test=is_test,
         fold=fold)
     dataloader = DataLoader(
         dataset=dataset,

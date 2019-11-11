@@ -1,5 +1,5 @@
 from models.emulator import Emulator
-from summarize_runs import summarize
+from utils.summarize_runs import summarize_run
 from experiments.hydrology.experiment_config import get_config
 from ray.tune.logger import CSVLogger, JsonLogger
 import ray
@@ -10,7 +10,7 @@ import shutil
 import numpy as np
 import logging
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 
 
 def parse_args():
@@ -134,19 +134,21 @@ def tune(args):
         loggers=[JsonLogger, CSVLogger],
         keep_checkpoints_num=1,
         reuse_actors=False,
-        stop={'patience_counter': config['patience']}
+        stop={
+            'patience_counter': config['patience'],
+            'epoch': 5 if args.test else 99999999
+        }
     )
 
-    return store, config['metric']
+    summarize_run(store)
 
 
 if __name__ == '__main__':
     args = parse_args()
 
-    ray.init(include_webui=False, object_store_memory=int(50e9))
+    # ray.init(include_webui=False, object_store_memory=int(50e9))
+    ray.init(include_webui=False, object_store_memory=int(10e8))
 
     tune(args)
 
     ray.shutdown()
-
-    # summarize(store, metric_name)

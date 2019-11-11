@@ -1,13 +1,12 @@
 from models.emulator import Emulator
 from experiments.hydrology.experiment_config import get_config
 import argparse
-import ray
 import os
+import ray
 import pickle
 import shutil
-from utils.summarize_runs import summarize_run
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 
 
 def parse_args():
@@ -32,6 +31,13 @@ def parse_args():
         '--overwrite',
         '-O',
         help='Flag to overwrite existing runs (all existing runs will be lost!).',
+        action='store_true'
+    )
+
+    parser.add_argument(
+        '--test',
+        '-T',
+        help='Flag to perform a test run; only a fraction of the data is evaluated in each epoch.',
         action='store_true'
     )
 
@@ -61,6 +67,9 @@ def tune(args):
 
     cv_store = f'{config["store"]}/{config["experiment_name"]}/{args.config_name}/cv/'
     store = f'{config["store"]}/{config["experiment_name"]}/{args.config_name}/pred/'
+    model_restore_path = f'{cv_store}/{config["experiment_name"]}/model.pth'
+    prediction_file = f'{store}predictions.zarr'
+
     if args.overwrite:
         if os.path.isdir(store):
             shutil.rmtree(store)
@@ -71,25 +80,33 @@ def tune(args):
                 'if you want to overwrite runs - all existing runs will be lost!')
     os.makedirs(store)
 
-    best_config = load_best_config(cv_store)
-    best_config.update({'fold': -1})
+    if os.path.isdir(prediction_file):
+        shutil.rmtree(prediction_file)
 
-    best_config.update({'hc_config': config})
+    best_config = load_best_config(cv_store)
+    best_config.update({
+        'fold': -1,
+        'hc_config': config}
+    )
 
     config.update({
         'store': store,
-        'is_test': False
+        'is_test': args.test
     })
 
-    model_path = os.path.join(os.path.dirname(cv_store), 'model.pth')
-    print('Restoring model from: ', model_path)
-    e = Emulator(best_config)
-    e._restore(model_path)
-    print('Predicting...')
-    predictions = e._predict()
-    predictions.to_netcdf(os.path.join(store, 'predictions.nc'))
+    # Inference is a single run, we can use more resources.
+    best_config['hc_config']['ncpu_per_run'] = 60
+    best_config['hc_config']['ngpu_per_run'] = 1
+    best_config['hc_config']['num_workers'] = 20
+    best_config['hc_config']['batch_size'] = 200
 
-    summarize_run(store)
+    print('Restoring model from: ', model_restore_path)
+    e = Emulator(best_config)
+    e._restore(model_restore_path)
+    e._predict(prediction_file)
+    #predictions.to_netcdf(os.path.join(store, 'predictions.nc'))
+
+    # summarize_run(store)
 
 
 if __name__ == '__main__':

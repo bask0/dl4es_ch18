@@ -180,17 +180,17 @@ def summarize(
 
 def plot_all(runs: pd.core.frame.DataFrame, metric: str, savepath: str) -> None:
     fig, ax = plt.subplots(1, 2, figsize=(
-        10, 8), sharex=True, sharey='row', gridspec_kw={'wspace': 0, 'hspace': 0})
+        8, 6), sharex=True, sharey='row', gridspec_kw={'wspace': 0, 'hspace': 0})
     box = dict(facecolor='yellow', pad=6, alpha=0.2)
 
     ax[0].text(
         1.0, 1.0, 'HYPERBAND OPTIMIZATION', transform=ax[0].transAxes,
         horizontalalignment='center', verticalalignment='bottom', fontweight='bold')
     ax[0].text(
-        0.5, 0.95, 'TRAINING', transform=ax[0].transAxes,
+        0.5, 0.98, 'TRAINING', transform=ax[0].transAxes,
         horizontalalignment='center', verticalalignment='top', bbox=box)
     ax[1].text(
-        0.5, 0.95, 'VALIDATION', transform=ax[1].transAxes,
+        0.5, 0.98, 'VALIDATION', transform=ax[1].transAxes,
         horizontalalignment='center', verticalalignment='top', bbox=box)
 
     train_name = DEFAULT_TRAIN_METRIC
@@ -219,17 +219,17 @@ def plot_all(runs: pd.core.frame.DataFrame, metric: str, savepath: str) -> None:
 
 def plot_single(single_run: pd.core.frame.DataFrame, metric: str, savepath: str) -> None:
     fig, ax = plt.subplots(1, 2, figsize=(
-        10, 8), sharex=True, sharey='row', gridspec_kw={'wspace': 0, 'hspace': 0})
+        8, 6), sharex=True, sharey='row', gridspec_kw={'wspace': 0, 'hspace': 0})
     box = dict(facecolor='yellow', pad=6, alpha=0.2)
 
     ax[0].text(
         1.0, 1.0, 'BEST RUN', transform=ax[0].transAxes,
         horizontalalignment='center', verticalalignment='bottom', fontweight='bold')
     ax[0].text(
-        0.5, 0.95, 'TRAINING', transform=ax[0].transAxes,
+        0.5, 0.98, 'TRAINING', transform=ax[0].transAxes,
         horizontalalignment='center', verticalalignment='top', bbox=box)
     ax[1].text(
-        0.5, 0.95, 'EVALUATION', transform=ax[1].transAxes,
+        0.5, 0.98, 'EVALUATION', transform=ax[1].transAxes,
         horizontalalignment='center', verticalalignment='top', bbox=box)
 
     train_name = DEFAULT_TRAIN_METRIC
