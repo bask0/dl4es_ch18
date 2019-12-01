@@ -1,7 +1,8 @@
 {
-  "dropout_in": 0.0,
-  "dropout_linear": 0.0,
-  "dropout_lstm": 0.30000000000000004,
+  "dropout_in": 0.2,
+  "dropout_linear": 0.1,
+  "dropout_lstm": 0.1,
+  "fold": -1,
   "hc_config": {
     "batch_size": 32,
     "dynamic_path": "/scratch/dl_chapter14/input/dynamic/gswp3.zarr",
@@ -19,7 +20,7 @@
     "grace_period": 0,
     "halving_factor": 3,
     "is_test": false,
-    "is_tune": true,
+    "is_tune": false,
     "loss_fn": "MSE",
     "mask": "mask",
     "mask_path": "/scratch/dl_chapter14/mask.nc",
@@ -37,6 +38,7 @@
     "num_workers": 8,
     "optimizer": "Adam",
     "patience": 20,
+    "permute": false,
     "pin_memory": true,
     "shuffle": 0,
     "static_path": "/scratch/dl_chapter14/input/static",
@@ -44,7 +46,7 @@
       "PFT",
       "soilproperties"
     ],
-    "store": "/scratch/dl_chapter14/experiments/hydro/default/tune/",
+    "store": "/scratch/dl_chapter14/experiments/mrro/noperm/modeltune",
     "target_path": "/scratch/dl_chapter14/target/dynamic/koirala2017.zarr",
     "target_var": "mrro",
     "time": {
@@ -65,8 +67,8 @@
     "train_slice_length": 3650,
     "warmup": 5
   },
-  "hidden_size": 300,
+  "hidden_size": 220,
   "learning_rate": 0.01,
-  "num_layers": 1,
-  "weight_decay": 0.001
+  "num_layers": 2,
+  "weight_decay": 0.0001
 }

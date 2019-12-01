@@ -88,7 +88,7 @@ def get_config(config_name):
         # - max_t: Maximum resources (in terms of epochs).
         # - Successive halving factor.
         # - num_samples (https://github.com/ray-project/ray/issues/5775)
-        'max_t': 81,
+        'max_t': 100,
         'halving_factor': 3,
         'num_samples': 81 + 27 + 9 + 6 + 5,
         # Early stopping arguments: This applies to prediction only, where
@@ -98,7 +98,7 @@ def get_config(config_name):
         #   more than 'patience' epochs have worse performance than current best, than
         #   predicitons are made.
         'grace_period': 0,
-        'patience': 5,
+        'patience': 20,
         # Number of CPUs to use per run.
         'ncpu_per_run': 10,
         # Number of GPUs to use per run (0, 1].

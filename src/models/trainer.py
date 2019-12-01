@@ -1,7 +1,8 @@
 
 import torch
 import numpy as np
-import zarr
+import xarray as xr
+import datetime
 import sys
 
 
@@ -133,15 +134,11 @@ class Trainer(object):
     def predict(self, target_file):
         self.model.eval()
 
-        print('Prediction are saved to: ', target_file)
-        self.eval_loader.dataset.create_empty_xr(target_file)
+        print('Prediction saved to: ', target_file)
+        xr_var = self.eval_loader.dataset.get_empty_xr()
 
-        P = zarr.open_group(target_file)
-        varname = self.eval_loader.dataset.dyn_target_name
-        varname_obs = varname + '_obs'
-
-        pred_array = np.zeros(P[varname].shape, dtype=np.float32)
-        obs_array = np.zeros(P[varname_obs].shape, dtype=np.float32)
+        pred_array = np.zeros(xr_var.shape, dtype=np.float32)
+        obs_array = np.zeros(xr_var.shape, dtype=np.float32)
 
         pred_array.fill(np.nan)
         obs_array.fill(np.nan)
@@ -152,7 +149,8 @@ class Trainer(object):
 
             print_progress(
                 np.min((
-                    (step + 1) * self.eval_loader.batch_size, len(self.eval_loader.dataset)
+                    (step + 1) *
+                    self.eval_loader.batch_size, len(self.eval_loader.dataset)
                 )), len(self.eval_loader.dataset), 'predicting')
 
             if torch.cuda.is_available():
@@ -175,8 +173,8 @@ class Trainer(object):
                 pred,
                 targets)
 
-            if torch.isnan(loss):
-                raise ValueError('Eval loss is NaN.')
+            #if torch.isnan(loss):
+            #    raise ValueError('Eval loss is NaN.')
 
             total_loss += loss.item()
 
@@ -187,8 +185,36 @@ class Trainer(object):
             obs_array[:, lat, lon] = targets.cpu().numpy().T
 
         print('\nWriting to file...')
-        P[varname][:] = pred_array
-        P[varname_obs][:] = obs_array
+
+        pred = xr.Dataset({
+            'mod': xr.DataArray(pred_array, coords=[xr_var.time, xr_var.lat, xr_var.lon]),
+            'obs': xr.DataArray(obs_array, coords=[xr_var.time, xr_var.lat, xr_var.lon])
+        })
+        pred.obs.attrs = xr_var.attrs
+        pred.obs.attrs = xr_var.attrs
+
+        pred.attrs = {
+            'created': datetime.date.today().strftime('%b %d %Y'),
+            'contact': 'bkraft@bgc-jena.mpg.de, sbesnard@bgc-jena.mpg.de',
+            'description': 'LSTM emulation of physical process model (Koirala et al. (2017))',
+            'var': xr_var.name,
+            'long_name': xr_var.attrs['long_name']
+        }
+
+        pred_space_optim = pred.chunk({
+            'lat': -1,
+            'lon': -1,
+            'time': 1
+        })
+
+        pred_time_optim = pred.chunk({
+            'lat': 15,
+            'lon': 15,
+            'time': -1
+        })
+
+        pred_space_optim.to_zarr(target_file.replace('.zarr', '_so.zarr'))
+        pred_time_optim.to_zarr(target_file.replace('.zarr', '_to.zarr'))
 
         mean_loss = total_loss / (step + 1)
 

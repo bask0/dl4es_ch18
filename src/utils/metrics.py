@@ -19,26 +19,6 @@ import warnings
 from datetime import datetime
 
 
-def percentile_gufunc(x):
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", category=RuntimeWarning)
-
-        return np.nanpercentile(x, 0.5)
-
-
-def xr_percentile(x, dim):
-    p = 0.5
-    m = xr.apply_ufunc(
-        percentile_gufunc, x,
-        input_core_dims=[[dim]],
-        dask='parallelized',
-        output_dtypes=[float],
-        keep_attrs=True)
-    m.attrs.update({'long_name': f'{p}-percentile', 'units': x.attrs.get('units', '-')})
-    m.name = f'{p}-percentile'
-    return m
-
-
 def pearson_cor_gufunc(x, y):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=RuntimeWarning)
@@ -274,3 +254,33 @@ def get_metrics(mod, obs, funs, dim='time', verbose=True):
 
 def timestr(t):
     return t.strftime("%m/%d/%Y, %H:%M:%S")
+
+
+def _single_xr_quantile(x, q, dim):
+    if isinstance(dim, str):
+        dim = [dim]
+    ndims = len(dim)
+    axes = tuple(np.arange(ndims)-ndims)
+    m = xr.apply_ufunc(
+        np.nanquantile, x,
+        input_core_dims=[dim],
+        dask='parallelized',
+        output_dtypes=[float],
+        keep_attrs=True,
+        kwargs={'q': q, 'axis': axes})
+    m.attrs.update({'long_name': f'{q}-quantile'})
+    m.name = 'quantile'
+    return m
+
+
+def xr_quantile(x, q, dim):
+    if not hasattr([1, 2], '__iter__'):
+        q = [q]
+    quantiles = []
+    for i, q_ in enumerate(q):
+        r = _single_xr_quantile(x, q_, dim).compute()
+        quantiles.append(r)
+    quantiles = xr.concat(quantiles, 'quantile')
+    quantiles['quantile'] = q
+
+    return quantiles

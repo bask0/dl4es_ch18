@@ -2,7 +2,7 @@ import xarray as xr
 import zarr
 import numpy as np
 import pandas as pd
-
+import torch
 from torch.utils.data.dataset import Dataset
 
 
@@ -46,7 +46,8 @@ class Data(Dataset):
             partition_set,
             fold=None,
             is_tune=False,
-            is_test=False):
+            is_test=False,
+            permute=False):
 
         if partition_set not in ['train', 'eval']:
             raise ValueError(
@@ -55,6 +56,8 @@ class Data(Dataset):
         if is_tune ^ (fold is None):
             raise ValueError(
                 'Either pass argument `fold` OR set `is_tune=True`.')
+
+        self.permute = permute if partition_set == 'train' else False
 
         self.dyn_features_names = config['dynamic_vars']
         self.dyn_features_path = config['dynamic_path']
@@ -119,7 +122,8 @@ class Data(Dataset):
             if partition_set == 'train':
                 mask_select = [1]
             else:
-                mask_select = [2]
+                mask_select = [1]
+                # mask_select = [2]
 
         else:
 
@@ -169,15 +173,18 @@ class Data(Dataset):
 
         dyn_target = self.dyn_target[self.dyn_target_name][self.t_start:self.t_end, lat, lon]
 
+        if self.permute:
+            perm_indx = torch.randperm(dyn_features.size(0))
+            dyn_features = dyn_features[perm_indx, :]
+            dyn_target = dyn_target[perm_indx]
+
         return dyn_features, dyn_target, (lat, lon)
 
-    def create_empty_xr(self, target_path):
-        ds = xr.open_zarr(self.dyn_target_path)[[self.dyn_target_name]].isel(
+    def get_empty_xr(self):
+        ds = xr.open_zarr(self.dyn_target_path)[self.dyn_target_name].isel(
                 time=slice(self.t_start + self.num_warmup_steps, self.t_end))
-        ds[self.dyn_target_name].values[:] = np.nan
-        ds[self.dyn_target_name + '_obs'] = ds[self.dyn_target_name]
 
-        ds.to_zarr(target_path)
+        return ds
 
 
 def get_sparse_grid(x, gap_size):

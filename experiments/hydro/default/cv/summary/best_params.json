@@ -1,7 +1,8 @@
 {
   "dropout_in": 0.0,
-  "dropout_linear": 0.0,
-  "dropout_lstm": 0.30000000000000004,
+  "dropout_linear": 0.2,
+  "dropout_lstm": 0.2,
+  "fold": -1,
   "hc_config": {
     "batch_size": 32,
     "dynamic_path": "/scratch/dl_chapter14/input/dynamic/gswp3.zarr",
@@ -19,7 +20,7 @@
     "grace_period": 0,
     "halving_factor": 3,
     "is_test": false,
-    "is_tune": true,
+    "is_tune": false,
     "loss_fn": "MSE",
     "mask": "mask",
     "mask_path": "/scratch/dl_chapter14/mask.nc",
@@ -44,9 +45,9 @@
       "PFT",
       "soilproperties"
     ],
-    "store": "/scratch/dl_chapter14/experiments/hydro/default/tune/",
+    "store": "/scratch/dl_chapter14/experiments/hydro/default/cv/",
     "target_path": "/scratch/dl_chapter14/target/dynamic/koirala2017.zarr",
-    "target_var": "mrro",
+    "target_var": "rzwc",
     "time": {
       "eval": [
         "2000-01-01",
@@ -65,8 +66,8 @@
     "train_slice_length": 3650,
     "warmup": 5
   },
-  "hidden_size": 300,
+  "hidden_size": 140,
   "learning_rate": 0.01,
   "num_layers": 1,
-  "weight_decay": 0.001
+  "weight_decay": 0.01
 }

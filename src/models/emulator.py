@@ -8,6 +8,19 @@ import torch
 import os
 
 
+def get_target_path(config, args, mode):
+    if mode not in ['hptune', 'modeltune', 'inference']:
+        raise ValueError(
+            'Argument `mode` must be one of (`hptune`, `modeltune`, `inference`) '
+            f'but is {mode}.')
+    path = os.path.join(
+        config["store"],
+        config['target_var'],
+        'perm' if args.permute else 'noperm',
+        mode)
+    return path
+
+
 class Emulator(tune.Trainable):
     def _setup(self, config):
 
@@ -38,6 +51,7 @@ class Emulator(tune.Trainable):
             is_tune=self.is_tune,
             is_test=self.hc_config['is_test'],
             fold=folds['train'],
+            permute=self.hc_config['permute'],
             batch_size=self.hc_config['batch_size'],
             shuffle=True,
             drop_last=True,
@@ -94,7 +108,7 @@ class Emulator(tune.Trainable):
 
     def _stop(self):
         if not self.is_tune:
-            self._save(os.path.dirname(self.logdir))
+            self._save(os.path.dirname(os.path.dirname(self.logdir)))
 
     def _predict(self, prediction_file):
 
@@ -126,6 +140,7 @@ def get_dataloader(
         is_tune,
         is_test=False,
         fold=None,
+        permute=False,
         **kwargs):
 
     dataset = Data(
@@ -133,7 +148,8 @@ def get_dataloader(
         partition_set=partition_set,
         is_tune=is_tune,
         is_test=is_test,
-        fold=fold)
+        fold=fold,
+        permute=permute)
     dataloader = DataLoader(
         dataset=dataset,
         **kwargs

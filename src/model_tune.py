@@ -1,4 +1,4 @@
-from models.emulator import Emulator
+from models.emulator import Emulator, get_target_path
 from utils.summarize_runs import summarize_run
 from experiments.hydrology.experiment_config import get_config
 from ray.tune.logger import CSVLogger, JsonLogger
@@ -35,6 +35,12 @@ def parse_args():
         '--overwrite',
         '-O',
         help='Flag to overwrite existing runs (all existing runs will be lost!).',
+        action='store_true'
+    )
+
+    parser.add_argument(
+        '--permute',
+        help='Whether to permute the sequence of input of output data during training.',
         action='store_true'
     )
 
@@ -79,8 +85,9 @@ def tune(args):
     config = get_config(args.config_name)
     config.update({'is_tune': False})
 
-    tune_store = f'{config["store"]}/{config["experiment_name"]}/{args.config_name}/tune/'
-    store = f'{config["store"]}/{config["experiment_name"]}/{args.config_name}/cv/'
+    tune_store = get_target_path(config, args, mode='hptune')
+    store = get_target_path(config, args, mode='modeltune')
+
     if args.overwrite:
         if os.path.isdir(store):
             shutil.rmtree(store)
@@ -98,7 +105,8 @@ def tune(args):
 
     config.update({
         'store': store,
-        'is_test': args.test
+        'is_test': args.test,
+        'permute': args.permute
     })
 
     import torch

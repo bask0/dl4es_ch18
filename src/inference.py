@@ -1,4 +1,4 @@
-from models.emulator import Emulator
+from models.emulator import Emulator, get_target_path
 from experiments.hydrology.experiment_config import get_config
 import argparse
 import os
@@ -65,9 +65,12 @@ def tune(args):
     config = get_config(args.config_name)
     config.update({'is_tune': False})
 
-    cv_store = f'{config["store"]}/{config["experiment_name"]}/{args.config_name}/cv/'
-    store = f'{config["store"]}/{config["experiment_name"]}/{args.config_name}/pred/'
-    model_restore_path = f'{cv_store}/{config["experiment_name"]}/model.pth'
+    model_tune_store = get_target_path(config, args, mode='modeltune')
+    model_restore_path = os.path.jonin(
+        model_tune_store,
+        'model.pth'
+    )
+    store = get_target_path(config, args, mode='inference')
     prediction_file = f'{store}predictions.zarr'
 
     if args.overwrite:
@@ -83,7 +86,7 @@ def tune(args):
     if os.path.isdir(prediction_file):
         shutil.rmtree(prediction_file)
 
-    best_config = load_best_config(cv_store)
+    best_config = load_best_config(model_tune_store)
     best_config.update({
         'fold': -1,
         'hc_config': config}
@@ -112,7 +115,7 @@ def tune(args):
 if __name__ == '__main__':
     args = parse_args()
 
-    ray.init(include_webui=False, object_store_memory=int(50e9))
+    ray.init(include_webui=False, object_store_memory=int(5e9))
 
     tune(args)
 

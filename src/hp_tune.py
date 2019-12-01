@@ -1,7 +1,7 @@
 from utils.summarize_runs import summarize_run
 from experiments.hydrology.experiment_config import get_search_space, get_config
 from data.data_loader import Data
-from models.emulator import Emulator
+from models.emulator import Emulator, get_target_path
 from ray.tune.logger import CSVLogger, JsonLogger
 from ray.tune.schedulers import HyperBandForBOHB
 from ray.tune.suggest.bohb import TuneBOHB
@@ -15,7 +15,7 @@ import shutil
 import numpy as np
 import logging
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,7"
 
 
 def parse_args():
@@ -47,6 +47,12 @@ def parse_args():
         '--test',
         '-T',
         help='Flag to perform a test run; only a fraction of the data is evaluated in each epoch.',
+        action='store_true'
+    )
+
+    parser.add_argument(
+        '--permute',
+        help='Whether to permute the sequence of input of output data during training.',
         action='store_true'
     )
 
@@ -98,7 +104,8 @@ def tune(args):
     search_space = get_search_space(args.config_name)
     config = get_config(args.config_name)
 
-    store = f'{config["store"]}/{config["experiment_name"]}/{args.config_name}/tune/'
+    store = get_target_path(config, args, 'hptune')
+
     if args.overwrite:
         if os.path.isdir(store):
             shutil.rmtree(store)
@@ -112,7 +119,8 @@ def tune(args):
     config.update({
         'store': store,
         'is_tune': True,
-        'is_test': args.test
+        'is_test': args.test,
+        'permute': args.permute
     })
 
     ngpu = torch.cuda.device_count()

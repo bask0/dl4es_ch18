@@ -1,7 +1,7 @@
 """
 Wrappers to execute functions in parallel.
 
-The wrappers all work on input / output file basis, where each call handlas the list
+The wrappers all work on input / output file basis, where each call handles the list
 of files consecutively:
 - 1st from input -> 1st output
 - 2nd from input -> 2nd output
@@ -13,77 +13,94 @@ The wrappers also handle single file calls where input and output are strings.
 
 import ray
 from typing import Iterable, Dict, Callable
+from datetime import datetime
 
 
 def parcall(
-        iterable: Dict[str, Iterable],
         fun: Callable,
+        iter_kwargs: Dict[str, Iterable],    
         num_cpus: int = 1,
-        **fun_kwargs):
-    """Execute function in parallel.
+        verbose: bool = True,
+        ray_init_kwargs={},
+        **kwargs):
+    """Run function in parallel on dict of of arguments.
 
-    The function ``fun`` must either take the input file path as first argument and, if ``out_files```
-    is not ``None``, output file path as second argument. You can pass function arguments via
-    ``fun_kwargs``.
+    Notes
+    ----------
+    Consider a function ``f(a, b, c)``; we want to run the function with varying
+    arguments a and b, while c remains constant:
+    - f(a=1, b=2, c=10)
+    - f(a=3, b=4, c=10)
+
+    Now, run this function in parallel:
+    iter_kwargs = {
+        'run0': {
+            'a': 1,
+            'b': 2
+        },
+        'run1': {
+            'a': 3,
+            'b': 4
+        },
+    }
+    parcall(f, iter_kwargs, num_cpus=2, c=10)
 
     Parameters
     ----------
-    iterable
-        A dictionary of iterables (not a string) that are called in parallel with a key corresponding
-        to the keyword argiument of ``fun``. The values must be iterable and of same length each.
     fun
-        function to be executed in parallel, must take the input file path as first argument and if
-        ``out_files`` is not ``None`` the output file path as second argument, You can pass function
-        arguments via ``fun_kwargs``.
-    fun_kwargs
-        kwargs passed to ``fun``.
+        Function to be executed in parallel. Must take arguments 
+        
+        must take the input file path as
+        first argument and if ``out_files`` is not ``None`` the output file path
+        as second argument, You can pass function arguments via ``fun_kwargs``.
+    iter_kwargs
+        A dictionary with the items to parallelize over in the fist dimension
+        and keywords in a subdict. All subitems must match a keyword in
+        ``fun``. See ``Notes``.
     num_cpus
-        Number of cpus to use.
+        Number of CPUs to use.
+    verbose
+        If true (default), some information is printed.
+    ray_init_kwargs
+        Keayword arguments passed to ``ray.init``.
+    kwargs:
+        Keyword arguments passed to ``fun``. Use this for arguments that remain constant
+        over the different calls. See ``Notes``.
 
     """
 
-    if not isinstance(iterable, dict):
+    if not isinstance(iter_kwargs, dict):
         raise ValueError('Argument ``iterable`` must be of type ``dict``.')
-    n_iter = -1
-    first_key = ''
-    for k, v in iterable.items():
-        if isinstance(v, str) or not hasattr(v, '__iter__'):
-            raise ValueError(
-                f'In arg ``iterable``, value ``{v}`` of key ``{k}`` is either'
-                'not an iterable or it is a string, which is both not allowed.')
-        if n_iter == -1:
-            n_iter = len(v)
-            first_key = k
-        else:
-            if len(v) != n_iter:
-                raise ValueError(
-                    'All values in the dictionary ``iterable`` must be of the '
-                    'same length, there is at least one mismatch, '
-                    f'len(iterable[{first_key}]) = {n_iter} != len(iterable[{k}]) = {len(v)}.')
-
-    iter_args = []
-    for i in range(n_iter):
-        single_arg = {}
-        for k, v in iterable.items():
-            single_arg.update({k: v[i]})
-        iter_args.append(single_arg)
 
     @ray.remote
     def remote_fun(kwargs):
-        return fun(**kwargs, **fun_kwargs)
+        return fun(**kwargs)
 
-    ray.init(num_cpus=num_cpus)
+    if verbose:
+        tic = datetime.now()
+        print(f'{tic.strftime("%Y-%m-%d %H:%M:%S")} - Parallel execution of '
+              f'function `{fun.__name__}` using {num_cpus} CPUs with {len(iter_kwargs)} total runs.')
 
+    ray.init(num_cpus=num_cpus, **ray_init_kwargs)
+    
     try:
         results = ray.get(
-            [remote_fun.remote(iter_arg)
-                for iter_arg in iter_args]
+            [remote_fun.remote({**v, **kwargs})
+                for k, v in iter_kwargs.items()]
         )
-
-        if len(results) != len(iter_args):
-            raise AssertionError('Something went wrong.')
-
         return results
 
     finally:
         ray.shutdown()
+
+        if verbose:
+            toc = datetime.now()
+            elapsed = toc - tic
+            elapsed_per_el = elapsed / len(iter_kwargs)
+
+            print(f'{toc.strftime("%Y-%m-%d %H:%M:%S")} - Done, elapsed time: {ptime(elapsed)} ({ptime(elapsed_per_el)} per call).')
+
+def ptime(t):
+    mins = t.seconds // 60
+    secs = t.seconds - mins * 60
+    return f'{t.seconds // 60} m {secs} s'

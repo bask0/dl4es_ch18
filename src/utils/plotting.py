@@ -6,6 +6,10 @@ import cartopy
 import cartopy.crs as ccrs
 from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 
+
+from pandas.plotting import register_matplotlib_converters
+register_matplotlib_converters()
+
 text_box = dict(facecolor='white', edgecolor='none', pad=6, alpha=.9)
 
 
@@ -14,6 +18,31 @@ def subplots_robinson(*args, **kwargs):
 
 
 def plot_map(ds, hist=True, coarsen=0, ax=None, figsize=(14, 7), subplot_kw={}, **kwargs):
+    """Plot global map.
+
+    Parameters
+    ----------
+
+    ds: xarray.Datarray
+        Data to plot
+    hist: bool
+        If True (default), a histogram will be added to the map
+    coarsen: int
+        A factor by which the data is aggregated in both spatial dimensions. this can be usful if the resolution
+        is very high and plotting takes too long.
+    ax: matplotlib axis, optional
+        If passed, plot will be added to this axis. Else, a default axes will be used. Use `subplots_robinson(...)`
+        to create subplots with Robinson projection equivalent to plt.subplots(...).
+    figsize: (int, int), optional
+        Figure size in inches, has no effect if `ax` is passed.
+    subplot_kw: dict,optional
+        Keyword arguments passed to subplot, has no effect if `ax` is passed.
+    kwargs:
+        Keyword arguments passed to pcolormesh. Some useful kwargs:
+        * cmap          str         -> Name of a colormap, e.g. 'viridis'
+        * robust        bool        -> Cuts outliers in colormap
+        * vmin, vmax    numeric     -> Set colormap min / max value
+    """
 
     if ax is None:
         plt.figure(figsize=figsize)
