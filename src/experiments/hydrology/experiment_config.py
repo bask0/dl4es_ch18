@@ -100,11 +100,11 @@ def get_config(config_name):
         'grace_period': 0,
         'patience': 20,
         # Number of CPUs to use per run.
-        'ncpu_per_run': 10,
+        'ncpu_per_run': 16,
         # Number of GPUs to use per run (0, 1].
         'ngpu_per_run': 1.0,
         # Number of workers per data loader.
-        'num_workers': 8,
+        'num_workers': 10,
         # Batch size is not part of the hyperparaeter search as we use
         # a batch size that optimizes training performance.
         'batch_size': 32,
@@ -113,34 +113,42 @@ def get_config(config_name):
         # The length of the training sequence, will be used to randomly subset training batch.
         'train_slice_length': 10 * 365,
         # Number of batches per training epoch. This is equivalent to setting a logging frequency.
-        'train_sample_size': 200,
+        'train_sample_size': None,
         # Whether to pin memory; see torch.utils.data.dataloader:Dataloader.
         'pin_memory': True,
         # Data configuration:
-        'static_vars': ['PFT', 'soilproperties'],
-        'static_path': '/scratch/dl_chapter14/input/static',
-        'dynamic_vars': [
-            'Rainf',
-            'Snowf',
-            'SWdown',
-            'LWdown',
-            'Tair',
-            'Wind',
-            'Qair',
-            'PSurf'],
-        'dynamic_path': '/scratch/dl_chapter14/input/dynamic/gswp3.zarr',
-        'msc_vars': [
-            'LAI',
-            'Cloudcover'],
-        'msc_path': '/scratch/dl_chapter14/input/msc',
-        'target_var': 'mrro',
-        'target_path': '/scratch/dl_chapter14/target/dynamic/koirala2017.zarr',
-        'mask': 'mask',
-        'mask_path': '/scratch/dl_chapter14/mask.nc',
+        'data_path': '/scratch/dl_chapter14/data/data.zarr/',
+        'input_vars': [
+            'ccover',
+            'lai',
+            'lwdown',
+            'swdown',
+            'psurf',
+            'qair',
+            'tair',
+            'wind',
+            'rainf',
+            'snowf',
+            'et',
+            'mrlslfrac',
+            'mrro'
+        ],
+        'input_vars_static': [
+            'soil_properties',
+            'pft'
+        ],
+        'target_var': 'et',
         'time': {
-            'range': ['1950-01-01', '2014-12-31'],
-            'train': ['1950-01-01', '2000-12-31'],
-            'eval':  ['2000-01-01', '2014-12-31']
+            'train': [
+                '1950-01-01',
+                '2000-12-31'
+            ],
+            'eval': [
+                '2000-01-01',
+                '2014-12-31'
+            ],
+            'warmup': 5,
+            'train_seq_length': 2000
         }
     }
     if config_name == 'default':

@@ -29,20 +29,6 @@ class Emulator(tune.Trainable):
         self.hc_config = config['hc_config']
         self.is_tune = self.hc_config['is_tune']
 
-        model = LSTM(
-            input_size=len(self.hc_config['dynamic_vars']),
-            hidden_size=config['hidden_size'],
-            num_layers=config['num_layers'],
-            output_size=1,
-            dropout_in=config['dropout_in'],
-            dropout_lstm=config['dropout_lstm'],
-            dropout_linear=config['dropout_linear']
-        )
-
-        if not isinstance(model, BaseModule):
-            raise ValueError(
-                'The model is not a subclass of models.modules:BaseModule')
-
         folds = get_cv_folds(config.get('fold', None))
 
         train_loader = get_dataloader(
@@ -70,6 +56,20 @@ class Emulator(tune.Trainable):
             num_workers=self.hc_config['num_workers'],
             pin_memory=self.hc_config['pin_memory']
         )
+
+        model = LSTM(
+            input_size=train_loader.dataset.num_inputs,
+            hidden_size=config['hidden_size'],
+            num_layers=config['num_layers'],
+            output_size=1,
+            dropout_in=config['dropout_in'],
+            dropout_lstm=config['dropout_lstm'],
+            dropout_linear=config['dropout_linear']
+        )
+
+        if not isinstance(model, BaseModule):
+            raise ValueError(
+                'The model is not a subclass of models.modules:BaseModule')
 
         if self.hc_config['optimizer'] == 'Adam':
             optimizer = torch.optim.AdamW(

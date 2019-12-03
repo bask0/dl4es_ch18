@@ -15,7 +15,7 @@ class Trainer(object):
             optimizer,
             loss_fn,
             train_seq_length,
-            train_sample_size):
+            train_sample_size=None):
         self.train_loader = train_loader
         self.eval_loader = eval_loader
         self.model = model.cuda() if torch.cuda.is_available() else model
@@ -23,7 +23,7 @@ class Trainer(object):
         self.optimizer = optimizer
         self.loss_fn = loss_fn
         self.train_seq_length = train_seq_length
-        self.train_sample_size = train_sample_size
+        self.train_sample_size = 9999999999 if train_sample_size is None else train_sample_size
 
         self.epoch = 0
         self.global_step = 0
@@ -36,18 +36,11 @@ class Trainer(object):
 
         total_loss = 0
 
-        for step, (features, targets, _) in enumerate(self.train_loader):
-            self.optimizer.zero_grad()
-
-            t_start = int(torch.randint(
-                0, int(features.size(1) - self.train_loader.dataset.num_warmup_steps - self.train_seq_length), (1, )))
-            t_end = t_start + self.train_loader.dataset.num_warmup_steps + self.train_seq_length
+        for step, (features_d, target, _) in enumerate(self.train_loader):
 
             if torch.cuda.is_available():
-                features = features[:, t_start:t_end, :].cuda(
-                    non_blocking=True)
-                # Targets loaded to GPU during forward pass.
-                targets = targets[:, t_start:t_end].cuda(non_blocking=True)
+                features_d = features_d.cuda(non_blocking=True)
+                target = target.cuda(non_blocking=True)
 
             # if torch.isnan(features).any():
             #     raise ValueError(
@@ -56,13 +49,13 @@ class Trainer(object):
             #     raise ValueError(
             #         'NaN in target in training, training stopped.')
 
-            pred = self.model(features)
-            pred = self.unstandardize_target(pred)
+            pred = self.model(features_d)
 
             loss = self.loss_fn(
-                pred[:, self.train_loader.dataset.num_warmup_steps:, 0],
-                targets[:, self.train_loader.dataset.num_warmup_steps:])
-
+                pred[:, self.train_loader.dataset.num_warmup_steps:],
+                target[:, self.train_loader.dataset.num_warmup_steps:])
+            
+            self.optimizer.zero_grad()
             loss.backward()
 
             if torch.isnan(loss):
@@ -94,11 +87,11 @@ class Trainer(object):
 
         total_loss = 0
 
-        for step, (features, targets, _) in enumerate(self.eval_loader):
+        for step, (features_d, target, _) in enumerate(self.eval_loader):
 
             if torch.cuda.is_available():
-                features = features.cuda(non_blocking=True)
-                targets = targets.cuda(non_blocking=True)
+                features_d = features_d.cuda(non_blocking=True)
+                target = target.cuda(non_blocking=True)
 
             # if torch.isnan(features).any():
             #     raise ValueError(
@@ -107,12 +100,11 @@ class Trainer(object):
             #     raise ValueError(
             #         'NaN in targets in evaluation, training stopped.')
 
-            pred = self.model(features)
-            pred = self.unstandardize_target(pred)
+            pred = self.model(features_d)
 
             loss = self.loss_fn(
-                pred[:, self.eval_loader.dataset.num_warmup_steps:, 0],
-                targets[:, self.eval_loader.dataset.num_warmup_steps:])
+                pred[:, self.eval_loader.dataset.num_warmup_steps:],
+                target[:, self.eval_loader.dataset.num_warmup_steps:])
 
             if torch.isnan(loss):
                 raise ValueError('Eval loss is NaN, training stopped.')
@@ -145,7 +137,7 @@ class Trainer(object):
 
         total_loss = 0
 
-        for step, (features, targets, (lat, lon)) in enumerate(self.eval_loader):
+        for step, (features_d, target, (lat, lon)) in enumerate(self.eval_loader):
 
             print_progress(
                 np.min((
@@ -154,8 +146,8 @@ class Trainer(object):
                 )), len(self.eval_loader.dataset), 'predicting')
 
             if torch.cuda.is_available():
-                features = features.cuda(non_blocking=True)
-                targets = targets.cuda(non_blocking=True)
+                features_d = features_d.cuda(non_blocking=True)
+                target = target.cuda(non_blocking=True)
 
             # if torch.isnan(features).any():
             #     raise ValueError(
@@ -164,11 +156,11 @@ class Trainer(object):
             #     raise ValueError(
             #         'NaN in targets in evaluation, training stopped.')
 
-            pred = self.model(features)
+            pred = self.model(features_d)
             pred = self.unstandardize_target(pred)
             pred = pred[:, self.eval_loader.dataset.num_warmup_steps:, 0]
 
-            targets = targets[:, self.eval_loader.dataset.num_warmup_steps:]
+            targets = target[:, self.eval_loader.dataset.num_warmup_steps:]
             loss = self.loss_fn(
                 pred,
                 targets)

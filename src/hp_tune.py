@@ -1,12 +1,10 @@
 from utils.summarize_runs import summarize_run
 from experiments.hydrology.experiment_config import get_search_space, get_config
-from data.data_loader import Data
 from models.emulator import Emulator, get_target_path
 from ray.tune.logger import CSVLogger, JsonLogger
 from ray.tune.schedulers import HyperBandForBOHB
 from ray.tune.suggest.bohb import TuneBOHB
 import ray
-from torch.utils.data.dataloader import DataLoader
 import torch
 import argparse
 import os
@@ -15,7 +13,7 @@ import shutil
 import numpy as np
 import logging
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,7"
+os.environ["CUDA_VISIBLE_DEVICES"] = '3,4,5,6,7'
 
 
 def parse_args():
@@ -27,13 +25,6 @@ def parse_args():
         type=str,
         help='Configuration name.',
         default='default'
-    )
-
-    parser.add_argument(
-        '--dl_config_file',
-        type=str,
-        help='Data loader configuration file.',
-        default='../data/data_loader_config.json'
     )
 
     parser.add_argument(
@@ -88,15 +79,6 @@ def parse_args():
 
     def _restore(self, path):
         self.trainer.restore(path)
-
-
-def get_dataloader(config, partition_set, **kwargs):
-    dataset = Data(config=config, partition_set=partition_set, is_tune=True)
-    dataloader = DataLoader(
-        dataset=dataset,
-        **kwargs
-    )
-    return dataloader
 
 
 def tune(args):
@@ -188,7 +170,7 @@ def tune(args):
 if __name__ == '__main__':
     args = parse_args()
 
-    ray.init(include_webui=False, object_store_memory=int(50e9))
+    ray.init(include_webui=False, memory=int(480e9), object_store_memory=int(100e9))
 
     tune(args)
 

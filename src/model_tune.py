@@ -25,13 +25,6 @@ def parse_args():
     )
 
     parser.add_argument(
-        '--dl_config_file',
-        type=str,
-        help='Data loader configuration file.',
-        default='../data/data_loader_config.json'
-    )
-
-    parser.add_argument(
         '--overwrite',
         '-O',
         help='Flag to overwrite existing runs (all existing runs will be lost!).',
