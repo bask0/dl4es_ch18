@@ -49,7 +49,7 @@ class Emulator(tune.Trainable):
             small_aoi=self.hc_config['small_aoi'],
             fold=-1,
             batch_size=self.hc_config['batch_size'],
-            shuffle=False,
+            shuffle=True,
             drop_last=False,
             num_workers=self.hc_config['num_workers'],
             pin_memory=self.hc_config['pin_memory']

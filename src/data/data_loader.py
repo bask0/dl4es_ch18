@@ -88,13 +88,14 @@ class Data(Dataset):
         self.permute = permute if partition_set == 'train' else False
 
         self.config = config
+        self.data_path = self.config['data_path']
 
-        ds = xr.open_zarr(self.config['data_path'])
+        ds = xr.open_zarr(self.data_path)
         self.dynamic_vars, self.static_vars = self._get_static_and_dynamic_varnames(
             ds)
 
         self.time_slicer = TimeSlice(
-            ds_path=self.config['data_path'],
+            ds_path=self.data_path,
             date_range=config['time'][partition_set],
             warmup=config['time']["warmup"],
             partition_set=partition_set,
@@ -165,7 +166,7 @@ class Data(Dataset):
             } for var in np.setdiff1d(ds.data_vars, 'mask')
         }
 
-        self.ds = zarr.open(self.config['data_path'], mode='r')
+        self.ds = zarr.open(self.data_path, mode='r')
         self._check_all_vars_present_in_dataset()
         self._check_var_time_dim()
 
@@ -213,8 +214,8 @@ class Data(Dataset):
         return features_d, target, (lat, lon)
 
     def get_empty_xr(self):
-        ds = xr.open_zarr(self.dyn_target_path)[self.dyn_target_name].isel(
-            time=slice(self.t_start + self.num_warmup_steps, self.t_end))
+        ds = xr.open_zarr(self.data_path)[self.target_var].sel(
+                time=slice(self.time_slicer.seldate_first, self.time_slicer.seldate_last))
 
         return ds
 

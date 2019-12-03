@@ -156,13 +156,12 @@ class Trainer(object):
 
             pred = self.model(features_d)
             pred = self.unstandardize_target(pred)
-            pred = pred[:, self.eval_loader.dataset.num_warmup_steps:, 0]
+            pred = pred[:, self.eval_loader.dataset.num_warmup_steps:]
+            target = target[:, self.eval_loader.dataset.num_warmup_steps:]
 
-            targets = target[:, self.eval_loader.dataset.num_warmup_steps:]
             loss = self.loss_fn(
                 pred,
-                targets)
-
+                target)
             #if torch.isnan(loss):
             #    raise ValueError('Eval loss is NaN.')
 
@@ -170,7 +169,7 @@ class Trainer(object):
             lon = lon.numpy()
 
             pred_array[:, lat, lon] = pred.cpu().numpy().T
-            obs_array[:, lat, lon] = targets.cpu().numpy().T
+            obs_array[:, lat, lon] = target.cpu().numpy().T
 
             self.epoch_logger.log('loss', 'test', loss.item())
 
@@ -280,8 +279,8 @@ class Trainer(object):
         self.best_loss = checkpoint['best_loss']
 
     def unstandardize_target(self, target):
-        return target * self.train_loader.dataset.dyn_target_stats['std'] + \
-            self.train_loader.dataset.dyn_target_stats['mean']
+        return self.train_loader.dataset.unstandardize(
+                    target, self.train_loader.dataset.target_var)
 
 
 def rprint(value):

@@ -22,13 +22,6 @@ def parse_args():
     )
 
     parser.add_argument(
-        '--dl_config_file',
-        type=str,
-        help='Data loader configuration file.',
-        default='../data/data_loader_config.json'
-    )
-
-    parser.add_argument(
         '--overwrite',
         '-O',
         help='Flag to overwrite existing runs (all existing runs will be lost!).',
@@ -39,6 +32,12 @@ def parse_args():
         '--small_aoi',
         '-T',
         help='Flag to perform a test run; only a fraction of the data is evaluated in each epoch.',
+        action='store_true'
+    )
+
+    parser.add_argument(
+        '--permute',
+        help='Whether to permute the sequence of input of output data during training.',
         action='store_true'
     )
 
@@ -71,7 +70,7 @@ def tune(args):
     config.update({'is_tune': False})
 
     model_tune_store = get_target_path(config, args, mode='modeltune')
-    model_restore_path = os.path.jonin(
+    model_restore_path = os.path.join(
         model_tune_store,
         'model.pth'
     )
@@ -94,12 +93,13 @@ def tune(args):
     best_config = load_best_config(model_tune_store)
     best_config.update({
         'fold': -1,
-        'hc_config': config}
-    )
+        'hc_config': config
+    })
 
     config.update({
         'store': store,
         'small_aoi': args.small_aoi,
+        'permute': args.permute
     })
 
     # Inference is a single run, we can use more resources.
