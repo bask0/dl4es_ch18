@@ -29,14 +29,12 @@ class Emulator(tune.Trainable):
         self.hc_config = config['hc_config']
         self.is_tune = self.hc_config['is_tune']
 
-        folds = get_cv_folds(config.get('fold', None))
-
         train_loader = get_dataloader(
             self.hc_config,
             partition_set='train',
             is_tune=self.is_tune,
-            is_test=self.hc_config['is_test'],
-            fold=folds['train'],
+            small_aoi=self.hc_config['small_aoi'],
+            fold=-1,
             permute=self.hc_config['permute'],
             batch_size=self.hc_config['batch_size'],
             shuffle=True,
@@ -48,8 +46,8 @@ class Emulator(tune.Trainable):
             self.hc_config,
             partition_set='eval',
             is_tune=self.is_tune,
-            is_test=self.hc_config['is_test'],
-            fold=folds['eval'],
+            small_aoi=self.hc_config['small_aoi'],
+            fold=-1,
             batch_size=self.hc_config['batch_size'],
             shuffle=False,
             drop_last=False,
@@ -91,7 +89,7 @@ class Emulator(tune.Trainable):
             optimizer=optimizer,
             loss_fn=loss_fn,
             train_seq_length=self.hc_config['train_slice_length'],
-            train_sample_size=2 if self.hc_config['is_test'] else self.hc_config['train_sample_size']
+            train_sample_size=self.hc_config['train_sample_size']
         )
 
     def _train(self):
@@ -123,22 +121,11 @@ class Emulator(tune.Trainable):
         self.trainer.restore(path)
 
 
-def get_cv_folds(fold):
-    # No cross-validation:
-    if fold == -1:
-        return {'train': 1, 'eval': 1}
-    # For hyperparameter tuning:
-    elif fold is None:
-        return {'train': None, 'eval': None}
-    else:
-        raise ValueError(f'Argument `fold`: invalid value: {fold}')
-
-
 def get_dataloader(
         config,
         partition_set,
         is_tune,
-        is_test=False,
+        small_aoi=False,
         fold=None,
         permute=False,
         **kwargs):
@@ -147,7 +134,7 @@ def get_dataloader(
         config=config,
         partition_set=partition_set,
         is_tune=is_tune,
-        is_test=is_test,
+        small_aoi=small_aoi,
         fold=fold,
         permute=permute)
     dataloader = DataLoader(

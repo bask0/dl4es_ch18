@@ -35,7 +35,7 @@ def parse_args():
     )
 
     parser.add_argument(
-        '--test',
+        '--small_aoi',
         '-T',
         help='Flag to perform a test run; only a fraction of the data is evaluated in each epoch.',
         action='store_true'
@@ -55,7 +55,7 @@ def parse_args():
 
     args = parser.parse_args()
 
-    if args.test:
+    if args.small_aoi:
         logging.warning(
             'Running experiment in test mode; Not all data is used for training!')
 
@@ -101,7 +101,7 @@ def tune(args):
     config.update({
         'store': store,
         'is_tune': True,
-        'is_test': args.test,
+        'small_aoi': args.small_aoi,
         'permute': args.permute
     })
 
@@ -132,7 +132,7 @@ def tune(args):
         time_attr='epoch',
         metric=config['metric'],
         mode='min',
-        max_t=5 if args.test else config['max_t'],
+        max_t=config['max_t'],
         reduction_factor=config['halving_factor'])
 
     if args.run_single:

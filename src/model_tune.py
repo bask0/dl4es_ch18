@@ -38,7 +38,7 @@ def parse_args():
     )
 
     parser.add_argument(
-        '--test',
+        '--small_aoi',
         '-T',
         help='Flag to perform a test run; only a fraction of the data is evaluated in each epoch.',
         action='store_true'
@@ -52,7 +52,7 @@ def parse_args():
 
     args = parser.parse_args()
 
-    if args.test:
+    if args.small_aoi:
         logging.warning(
             'Running experiment in test mode; Not all data is used for training!')
 
@@ -98,7 +98,7 @@ def tune(args):
 
     config.update({
         'store': store,
-        'is_test': args.test,
+        'small_aoi': args.small_aoi,
         'permute': args.permute
     })
 
@@ -136,8 +136,7 @@ def tune(args):
         keep_checkpoints_num=1,
         reuse_actors=False,
         stop={
-            'patience_counter': config['patience'],
-            'epoch': 5 if args.test else 99999999
+            'patience_counter': config['patience']
         }
     )
 

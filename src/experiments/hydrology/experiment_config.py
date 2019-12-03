@@ -113,7 +113,7 @@ def get_config(config_name):
         # The length of the training sequence, will be used to randomly subset training batch.
         'train_slice_length': 10 * 365,
         # Number of batches per training epoch. This is equivalent to setting a logging frequency.
-        'train_sample_size': None,
+        'train_sample_size': 200,
         # Whether to pin memory; see torch.utils.data.dataloader:Dataloader.
         'pin_memory': True,
         # Data configuration:

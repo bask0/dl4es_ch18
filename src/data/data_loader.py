@@ -29,13 +29,14 @@ class Data(Dataset):
     partition_set (str):
         Cross validation partition set, one of 'train' | 'eval'.
     fold (int):
-        The spatial cross-validation fold. Must correspond to values in the mask. See 'Notes'
+        The spatial cross-validation fold. Must correspond to values in the mask. -1 means that
+        ll data is used. See 'Notes'.
         for more details.
     is_tune (bool):
         If 'True', a subset fo the data will be sampled for tuning of hyperparameters. See
-        'Notes' for more details. In this case, the 'fold' argument has no effect.
-    is_test: bool
-        If test, a subset of the data is used (Europe).
+        'Notes' for more details. If 'True', the 'fold' argument has no effect.
+    small_aoi: bool
+        If True, a subset of the data is used (Europe).
     permute: bool
         Whether to permute the samples, default is False.
 
@@ -58,16 +59,12 @@ class Data(Dataset):
             partition_set,
             fold=None,
             is_tune=False,
-            is_test=False,
+            small_aoi=False,
             permute=False):
 
         if partition_set not in ['train', 'eval']:
             raise ValueError(
                 f'Argument `partition_set`: Must be one of: [`train` | `eval`].')
-
-        if is_tune ^ (fold is None):
-            raise ValueError(
-                'Either pass argument `fold` OR set `is_tune=True`.')
 
         def msg(
             x): return f'Argument ``{x}`` is not an iterable of string elements.'
@@ -87,7 +84,7 @@ class Data(Dataset):
         self.partition_set = partition_set
         self.fold = fold
         self.is_tune = is_tune
-        self.is_test = is_test
+        self.small_aoi = small_aoi
         self.permute = permute if partition_set == 'train' else False
 
         self.config = config
@@ -107,49 +104,65 @@ class Data(Dataset):
 
         mask = ds['mask']
 
-        if is_test:
+        if small_aoi:
             # Set mask outside Europe to 0.
             print('Test run: training on lat > 0 & lon > 0')
             mask = mask.where((mask.lat > 0) & (mask.lon > 0), 0, drop=False)
 
+        # The mask contains 0 for non-valid pixels and integers > 0 for the folds. Here, we get
+        # all fold integers.
         folds = np.setdiff1d(np.unique(mask), 0)
-
         if any(folds < 0):
             raise ValueError(
-                f'The mask ({self.mask_path}) cannot contain values < 0.')
+                f'The mask cannot contain values < 0.')
 
+        # For HP tuning, a subset of the data is used, every 3rd pixel in lat / lon direction.
         if is_tune:
 
             sparse_grid = self._get_sparse_grid(mask, 3)
 
-            mask = (mask > 0).astype(int)
+            mask = (mask == 1).astype(int)
 
             mask *= sparse_grid
 
-            if partition_set == 'train':
-                mask_select = [1]
-            else:
-                mask_select = [1]
-
+        # For other model runs, the fold is used for validationg, while all other folds are
+        # used for training. E.g. if folds are [1, 2, 3] and fold is 1, the folds [2, 3] are
+        # for traiing and 1 for validation.
         else:
 
-            if fold <= 0:
+            if (fold < -1) or (fold == 0):
                 raise ValueError(
-                    f'Argument `fold` must be a values > 0 but is {fold}.')
+                    f'Argument `fold` must be -1 or a value > 0 but is {fold}.')
 
-            if fold not in folds:
+            if fold not in np.append(folds, -1):
                 raise ValueError(
                     f'Fold `{fold}` not found in mask with unique values `{folds}`.')
 
-            mask_select = [fold]
+            # Select all folds.
+            if fold == -1:
+                mask_select = folds
+            else:
+                if len(folds) == 1:
+                    raise ValueError(
+                        f'As the mask contains only one fold ({folds}), you must pass '
+                        '``fold=-1`` to make training and valiation both use the same '
+                        'fold.'
+                    )
+                if partition_set == 'train':
+                    mask_select = np.setdiff1d(folds, fold)
+                else:
+                    mask_select = [fold]
 
-        self.coords = np.argwhere(np.isin(mask, mask_select))
+            mask = mask.isin(mask_select)
+
+        self.mask = mask
+        self.coords = np.argwhere(mask.values)
 
         self.ds_stats = {
             var: {
                 'mean': np.float32(ds[var].attrs['mean']),
                 'std': np.float32(ds[var].attrs['std'])
-            } for var in ds.data_vars
+            } for var in np.setdiff1d(ds.data_vars, 'mask')
         }
 
         self.ds = zarr.open(self.config['data_path'], mode='r')
@@ -282,6 +295,7 @@ class TimeSlice(object):
         ``TimeSlice:get_time_range``.
 
     """
+
     def __init__(
             self,
             ds_path,

@@ -5,6 +5,7 @@ import os
 import ray
 import pickle
 import shutil
+import logging
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 
@@ -35,13 +36,17 @@ def parse_args():
     )
 
     parser.add_argument(
-        '--test',
+        '--small_aoi',
         '-T',
         help='Flag to perform a test run; only a fraction of the data is evaluated in each epoch.',
         action='store_true'
     )
 
     args = parser.parse_args()
+
+    if args.small_aoi:
+        logging.warning(
+            'Running experiment in test mode; Not all data is used for training!')
 
     return args
 
@@ -94,7 +99,7 @@ def tune(args):
 
     config.update({
         'store': store,
-        'is_test': args.test
+        'small_aoi': args.small_aoi,
     })
 
     # Inference is a single run, we can use more resources.
