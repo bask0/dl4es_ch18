@@ -5,6 +5,8 @@ import xarray as xr
 import datetime
 import sys
 
+from utils.loggers import EpochLogger
+
 
 class Trainer(object):
     def __init__(
@@ -26,15 +28,14 @@ class Trainer(object):
         self.train_sample_size = 9999999999 if train_sample_size is None else train_sample_size
 
         self.epoch = 0
-        self.global_step = 0
 
         self.patience_counter = 0
         self.best_loss = None
 
+        self.epoch_logger = EpochLogger()
+
     def train_epoch(self):
         self.model.train()
-
-        total_loss = 0
 
         for step, (features_d, target, _) in enumerate(self.train_loader):
 
@@ -63,29 +64,25 @@ class Trainer(object):
 
             self.optimizer.step()
 
-            total_loss += loss.item()
-
-            self.global_step += 1
+            self.epoch_logger.log('loss', 'train', loss.item())
 
             del loss
 
             if step > self.train_sample_size:
                 break
 
-        mean_loss = total_loss / (step + 1)
-
         self.epoch += 1
+
+        stats = self.epoch_logger.get_summary()
 
         return {
             'epoch': self.epoch,
-            'loss_train': mean_loss
+            **stats
         }
 
     @torch.no_grad()
     def eval_epoch(self):
         self.model.eval()
-
-        total_loss = 0
 
         for step, (features_d, target, _) in enumerate(self.eval_loader):
 
@@ -109,14 +106,17 @@ class Trainer(object):
             if torch.isnan(loss):
                 raise ValueError('Eval loss is NaN, training stopped.')
 
-            total_loss += loss.item()
+            self.epoch_logger.log('loss', 'eval', loss.item())
 
-        mean_loss = total_loss / (step + 1)
+            if step > self.train_sample_size:
+                break
 
-        perc_improved = self.early_stopping(mean_loss)
+        stats = self.epoch_logger.get_summary()
+
+        perc_improved = self.early_stopping(stats['loss_eval'])
 
         return {
-            'loss_eval': mean_loss,
+            **stats,
             'patience_counter': self.patience_counter,
             'perc_improved': perc_improved,
             'best_loss': self.best_loss
@@ -134,8 +134,6 @@ class Trainer(object):
 
         pred_array.fill(np.nan)
         obs_array.fill(np.nan)
-
-        total_loss = 0
 
         for step, (features_d, target, (lat, lon)) in enumerate(self.eval_loader):
 
@@ -168,13 +166,13 @@ class Trainer(object):
             #if torch.isnan(loss):
             #    raise ValueError('Eval loss is NaN.')
 
-            total_loss += loss.item()
-
             lat = lat.numpy()
             lon = lon.numpy()
 
             pred_array[:, lat, lon] = pred.cpu().numpy().T
             obs_array[:, lat, lon] = targets.cpu().numpy().T
+
+            self.epoch_logger.log('loss', 'test', loss.item())
 
         print('\nWriting to file...')
 
@@ -208,12 +206,12 @@ class Trainer(object):
         pred_space_optim.to_zarr(target_file.replace('.zarr', '_so.zarr'))
         pred_time_optim.to_zarr(target_file.replace('.zarr', '_to.zarr'))
 
-        mean_loss = total_loss / (step + 1)
-
         print('Done.')
 
+        stats = self.epoch_logger.get_summary()
+
         return {
-            'loss_eval': mean_loss
+            **stats
         }
 
     def early_stopping(self, loss):
@@ -248,7 +246,6 @@ class Trainer(object):
         torch.save(
             {
                 'epoch': self.epoch,
-                'global_step': self.global_step,
                 'patience_counter': self.patience_counter,
                 'best_loss': self.best_loss,
                 'model_state_dict': self.model.state_dict(),
@@ -279,7 +276,6 @@ class Trainer(object):
         # self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
 
         self.epoch = checkpoint['epoch']
-        self.global_step = checkpoint['global_step']
         self.patience_counter = checkpoint['patience_counter']
         self.best_loss = checkpoint['best_loss']
 
