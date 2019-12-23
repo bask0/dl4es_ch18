@@ -17,39 +17,34 @@ def get_search_space(config_name='default'):
 
     config_space = CS.ConfigurationSpace()
 
-    if config_name == 'default':
-        # Model args.
-        config_space.add_hyperparameters([
-            # LSTM hidden size.
-            CS.UniformIntegerHyperparameter(
-                    'hidden_size', lower=20, upper=320, q=20),
-            # LSTM number of layers.
-            CS.UniformIntegerHyperparameter(
-                'num_layers', lower=1, upper=3, q=1),
-            # Dropout probability for input.
-            CS.UniformFloatHyperparameter(
-                'dropout_in', lower=0.0, upper=0.7, q=0.1),
-            # Dropout probability for input.
-            CS.UniformFloatHyperparameter(
-                'dropout_lstm', lower=0.0, upper=0.7, q=0.1),
-            # Dropout probability for input.
-            CS.UniformFloatHyperparameter(
-                'dropout_linear', lower=0.0, upper=0.7, q=0.1)
-        ])
+    # Model args.
+    config_space.add_hyperparameters([
+        # LSTM hidden size.
+        CS.UniformIntegerHyperparameter(
+                'hidden_size', lower=20, upper=320, q=20),
+        # LSTM number of layers.
+        CS.UniformIntegerHyperparameter(
+            'num_layers', lower=1, upper=3, q=1),
+        # Dropout probability for input.
+        CS.UniformFloatHyperparameter(
+            'dropout_in', lower=0.0, upper=0.7, q=0.1),
+        # Dropout probability for input.
+        CS.UniformFloatHyperparameter(
+            'dropout_lstm', lower=0.0, upper=0.7, q=0.1),
+        # Dropout probability for input.
+        CS.UniformFloatHyperparameter(
+            'dropout_linear', lower=0.0, upper=0.7, q=0.1)
+    ])
 
-        # Optim args.
-        config_space.add_hyperparameters([
-            # The learning rate.
-            CS.CategoricalHyperparameter(
-                'learning_rate', choices=[1e-2, 1e-3, 1e-4]),
-            # Weight decay (L2 regularization).
-            CS.CategoricalHyperparameter(
-                'weight_decay', choices=[1e-2, 1e-3, 1e-4])
-        ])
-    else:
-        raise ValueError(
-            f'Argument `config_name`: {config_name} not a valid configuration.'
-        )
+    # Optim args.
+    config_space.add_hyperparameters([
+        # The learning rate.
+        CS.CategoricalHyperparameter(
+            'learning_rate', choices=[1e-2, 1e-3, 1e-4]),
+        # Weight decay (L2 regularization).
+        CS.CategoricalHyperparameter(
+            'weight_decay', choices=[1e-2, 1e-3, 1e-4])
+    ])
 
     return config_space
 
@@ -73,8 +68,9 @@ def get_config(config_name):
 
     """
 
+    # This is the default config, all other configurations need to build upon this.
     global_config = {
-        'experiment_name': 'hydro',
+        'experiment_name': config_name,
         # Directory for logging etc.
         'store': '/scratch/dl_chapter14/experiments',
         # The name of the metric to MINIMIZE. Make shure this is part of
@@ -91,20 +87,20 @@ def get_config(config_name):
         'max_t': 100,
         'halving_factor': 3,
         'num_samples': 81 + 27 + 9 + 6 + 5,
-        # Early stopping arguments: This applies to prediction only, where
+        # Early stopping arguments: This applies to model tuning only, where
         # the best configuration from BOHB is used.
         # - grace_period: Minimum number of epochs.
         # - patience: After 'grace_period' number of epochs, training is stopped if
         #   more than 'patience' epochs have worse performance than current best, than
         #   predicitons are made.
         'grace_period': 0,
-        'patience': 20,
+        'patience': 5,
         # Number of CPUs to use per run.
-        'ncpu_per_run': 16,
+        'ncpu_per_run': 20,
         # Number of GPUs to use per run (0, 1].
         'ngpu_per_run': 1.0,
         # Number of workers per data loader.
-        'num_workers': 10,
+        'num_workers': 14,
         # Batch size is not part of the hyperparaeter search as we use
         # a batch size that optimizes training performance.
         'batch_size': 32,
@@ -128,10 +124,7 @@ def get_config(config_name):
             'tair',
             'wind',
             'rainf',
-            'snowf',
-            'et',
-            'mrlslfrac',
-            'mrro'
+            'snowf'
         ],
         'input_vars_static': [
             'soil_properties',
@@ -140,25 +133,41 @@ def get_config(config_name):
         'target_var': 'et',
         'time': {
             'train': [
-                '1950-01-01',
+                '1980-01-01',
                 '2000-12-31'
             ],
             'eval': [
                 '2000-01-01',
-                '2014-12-31'
+                '2013-12-31'
             ],
             'warmup': 5,
             'train_seq_length': 2000
-        }
+        },
+        # If true, the feature and target sequences are permuted randomly in unison.
+        'permute': False
     }
     if config_name == 'default':
-        experiment_config = {
-            'noise_std': 0.0,
-            'shuffle': 0
-        }
+        pass
+    elif config_name == 'w_sm.w_perm':
+        # Add soil moisture as predictor.
+        global_config['input_vars'] += ['mrlsl_shal', 'mrlsl_deep']
+        # Permute sequences.
+        global_config.update({
+            'permute': True
+        })
+    elif config_name == 'w_sm.n_perm':
+        # Add soil moisture as predictor.
+        global_config['input_vars'] += ['mrlsl_shal', 'mrlsl_deep']
+    elif config_name == 'n_sm.n_perm':
+        pass
+    elif config_name == 'n_sm.w_perm':
+        # Permute sequences.
+        global_config.update({
+            'permute': True
+        })
     else:
         raise ValueError(
             f'Argument `config_name`: {config_name} not a valid configuration.'
         )
 
-    return {**global_config, **experiment_config}
+    return global_config

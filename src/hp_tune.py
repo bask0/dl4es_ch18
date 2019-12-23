@@ -13,7 +13,7 @@ import shutil
 import numpy as np
 import logging
 
-os.environ["CUDA_VISIBLE_DEVICES"] = '3,4,5,6,7'
+os.environ["CUDA_VISIBLE_DEVICES"] = '0,1,2,3'
 
 
 def parse_args():
@@ -38,12 +38,6 @@ def parse_args():
         '--small_aoi',
         '-T',
         help='Flag to perform a test run; only a fraction of the data is evaluated in each epoch.',
-        action='store_true'
-    )
-
-    parser.add_argument(
-        '--permute',
-        help='Whether to permute the sequence of input of output data during training.',
         action='store_true'
     )
 
@@ -86,7 +80,7 @@ def tune(args):
     search_space = get_search_space(args.config_name)
     config = get_config(args.config_name)
 
-    store = get_target_path(config, args, 'hptune')
+    store = get_target_path(config, 'hptune')
 
     if args.overwrite:
         if os.path.isdir(store):
@@ -99,10 +93,8 @@ def tune(args):
     os.makedirs(store)
 
     config.update({
-        'store': store,
         'is_tune': True,
         'small_aoi': args.small_aoi,
-        'permute': args.permute
     })
 
     ngpu = torch.cuda.device_count()
@@ -145,12 +137,11 @@ def tune(args):
 
     ray.tune.run(
         Emulator,
-        name=config['experiment_name'],
         config={'hc_config': config},
         resources_per_trial={
             'cpu': config['ncpu_per_run'],
             'gpu': config['ngpu_per_run']},
-        num_samples=max_concurrent if args.test else config['num_samples'],
+        num_samples=config['num_samples'],
         local_dir=store,
         raise_on_failed_trial=True,
         verbose=1,

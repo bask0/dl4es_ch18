@@ -36,8 +36,8 @@ class Data(Dataset):
         If 'True', a subset fo the data will be sampled for tuning of hyperparameters. See
         'Notes' for more details. If 'True', the 'fold' argument has no effect.
     small_aoi: bool
-        If True, a subset of the data is used (Europe).
-    permute: bool
+        If True, a subset of the data is used (Europe and Western Asia).
+    permute_time: bool
         Whether to permute the samples, default is False.
 
     Returns
@@ -60,7 +60,7 @@ class Data(Dataset):
             fold=None,
             is_tune=False,
             small_aoi=False,
-            permute=False):
+            permute_time=False):
 
         if partition_set not in ['train', 'eval']:
             raise ValueError(
@@ -85,14 +85,13 @@ class Data(Dataset):
         self.fold = fold
         self.is_tune = is_tune
         self.small_aoi = small_aoi
-        self.permute = permute if partition_set == 'train' else False
+        self.permute_time = permute_time if partition_set == 'train' else False
 
         self.config = config
         self.data_path = self.config['data_path']
 
         ds = xr.open_zarr(self.data_path)
-        self.dynamic_vars, self.static_vars = self._get_static_and_dynamic_varnames(
-            ds)
+        self.dynamic_vars, self.static_vars = self._get_static_and_dynamic_varnames(ds)
 
         self.time_slicer = TimeSlice(
             ds_path=self.data_path,
@@ -106,9 +105,14 @@ class Data(Dataset):
         mask = ds['mask']
 
         if small_aoi:
-            # Set mask outside Europe to 0.
+            # Reduce AOI size.
             print('Test run: training on lat > 0 & lon > 0')
-            mask = mask.where((mask.lat > 0) & (mask.lon > 0), 0, drop=False)
+            mask = mask.where((
+                mask.lat > 35) & (
+                mask.lat < 70) & (
+                mask.lon > 0) & (
+                mask.lon < 120
+            ), 0, drop=False)
 
         # The mask contains 0 for non-valid pixels and integers > 0 for the folds. Here, we get
         # all fold integers.
@@ -206,8 +210,8 @@ class Data(Dataset):
             raise ValueError('NaN in features, training stopped.')
 
         # Random permute time-series.
-        if self.permute:
-            perm_indx = torch.randperm(features_d.size(0))
+        if self.permute_time:
+            perm_indx = torch.randperm(features_d.shape[0])
             features_d = features_d[perm_indx, :]
             target = target[perm_indx, :]
 

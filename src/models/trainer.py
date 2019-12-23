@@ -4,8 +4,10 @@ import numpy as np
 import xarray as xr
 import datetime
 import sys
+import os
 
 from utils.loggers import EpochLogger
+from torch.optim.lr_scheduler import StepLR
 
 
 class Trainer(object):
@@ -26,6 +28,8 @@ class Trainer(object):
         self.loss_fn = loss_fn
         self.train_seq_length = train_seq_length
         self.train_sample_size = 9999999999 if train_sample_size is None else train_sample_size
+
+        self.scheduler = StepLR(self.optimizer, step_size=1, gamma=0.95)
 
         self.epoch = 0
 
@@ -72,6 +76,8 @@ class Trainer(object):
                 break
 
         self.epoch += 1
+
+        self.scheduler.step()
 
         stats = self.epoch_logger.get_summary()
 
@@ -123,10 +129,10 @@ class Trainer(object):
         }
 
     @torch.no_grad()
-    def predict(self, target_file):
+    def predict(self, target_dir):
         self.model.eval()
 
-        print('Prediction saved to: ', target_file)
+        print('Prediction saved to: ', target_dir)
         xr_var = self.eval_loader.dataset.get_empty_xr()
 
         pred_array = np.zeros(xr_var.shape, dtype=np.float32)
@@ -155,9 +161,11 @@ class Trainer(object):
             #         'NaN in targets in evaluation, training stopped.')
 
             pred = self.model(features_d)
-            pred = self.unstandardize_target(pred)
             pred = pred[:, self.eval_loader.dataset.num_warmup_steps:]
             target = target[:, self.eval_loader.dataset.num_warmup_steps:]
+
+            pred = self.unstandardize_target(pred)
+            target = self.unstandardize_target(target)
 
             loss = self.loss_fn(
                 pred,
@@ -202,8 +210,8 @@ class Trainer(object):
             'time': -1
         })
 
-        pred_space_optim.to_zarr(target_file.replace('.zarr', '_so.zarr'))
-        pred_time_optim.to_zarr(target_file.replace('.zarr', '_to.zarr'))
+        pred_space_optim.to_zarr(os.path.join(target_dir, 'pred_so.zarr'))
+        pred_time_optim.to_zarr(os.path.join(target_dir, 'pred_to.zarr'))
 
         print('Done.')
 
@@ -249,7 +257,7 @@ class Trainer(object):
                 'best_loss': self.best_loss,
                 'model_state_dict': self.model.state_dict(),
                 'optimizer_state_dict': self.optimizer.state_dict(),
-                #'scheduler_state_dict': self.scheduler.state_dict()
+                'scheduler_state_dict': self.scheduler.state_dict()
             },
             checkpoint
         )
@@ -272,7 +280,7 @@ class Trainer(object):
 
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
-        # self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
 
         self.epoch = checkpoint['epoch']
         self.patience_counter = checkpoint['patience_counter']

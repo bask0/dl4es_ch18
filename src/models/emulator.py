@@ -8,15 +8,14 @@ import torch
 import os
 
 
-def get_target_path(config, args, mode):
+def get_target_path(config, mode):
     if mode not in ['hptune', 'modeltune', 'inference']:
         raise ValueError(
-            'Argument `mode` must be one of (`hptune`, `modeltune`, `inference`) '
-            f'but is {mode}.')
+            'Argument `mode` must be one of (`hptune`, `modeltune`, `inference`) but is {mode}.')
     path = os.path.join(
         config["store"],
         config['target_var'],
-        'perm' if args.permute else 'noperm',
+        config['experiment_name'],
         mode)
     return path
 
@@ -35,7 +34,7 @@ class Emulator(tune.Trainable):
             is_tune=self.is_tune,
             small_aoi=self.hc_config['small_aoi'],
             fold=-1,
-            permute=self.hc_config['permute'],
+            permute_time=self.hc_config['permute'],
             batch_size=self.hc_config['batch_size'],
             shuffle=True,
             drop_last=True,
@@ -48,6 +47,7 @@ class Emulator(tune.Trainable):
             is_tune=self.is_tune,
             small_aoi=self.hc_config['small_aoi'],
             fold=-1,
+            permute_time=False,
             batch_size=self.hc_config['batch_size'],
             shuffle=True,
             drop_last=False,
@@ -108,10 +108,10 @@ class Emulator(tune.Trainable):
         if not self.is_tune:
             self._save(os.path.dirname(os.path.dirname(self.logdir)))
 
-    def _predict(self, prediction_file):
+    def _predict(self, prediction_dir):
 
         self.trainer.predict(
-            prediction_file)
+            prediction_dir)
 
     def _save(self, path):
         path = os.path.join(path, 'model.pth')
@@ -127,7 +127,7 @@ def get_dataloader(
         is_tune,
         small_aoi=False,
         fold=None,
-        permute=False,
+        permute_time=False,
         **kwargs):
 
     dataset = Data(
@@ -136,7 +136,7 @@ def get_dataloader(
         is_tune=is_tune,
         small_aoi=small_aoi,
         fold=fold,
-        permute=permute)
+        permute_time=permute_time)
     dataloader = DataLoader(
         dataset=dataset,
         **kwargs
