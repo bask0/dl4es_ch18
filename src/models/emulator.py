@@ -1,6 +1,7 @@
 from data.data_loader import Data
 from models.trainer import Trainer
 from models.lstm import LSTM
+from models.multilinear import DENSE
 from models.modules import BaseModule
 from ray import tune
 from torch.utils.data.dataloader import DataLoader
@@ -27,6 +28,18 @@ class Emulator(tune.Trainable):
 
         self.hc_config = config['hc_config']
         self.is_tune = self.hc_config['is_tune']
+
+        if self.config['dense_activation'] == 'relu':
+            activation = torch.nn.ReLU()
+        elif self.config['dense_activation'] == 'tanh':
+            activation = torch.nn.Tanh()
+        elif self.config['dense_activation'] == 'selu':
+            activation = torch.nn.SELU()
+        else:
+            raise ValueError(
+                'The configuration `dense_activation` must be one of '
+                f'(`relu`, `tanh`, `selu`) but is `{self.hc_config["dense_activation"]}``.'
+            )
 
         train_loader = get_dataloader(
             self.hc_config,
@@ -55,15 +68,29 @@ class Emulator(tune.Trainable):
             pin_memory=self.hc_config['pin_memory']
         )
 
-        model = LSTM(
-            input_size=train_loader.dataset.num_inputs,
-            hidden_size=config['hidden_size'],
-            num_layers=config['num_layers'],
-            output_size=1,
-            dropout_in=config['dropout_in'],
-            dropout_lstm=config['dropout_lstm'],
-            dropout_linear=config['dropout_linear']
-        )
+        if self.hc_config['permute']:
+            model = DENSE(
+                input_size=train_loader.dataset.num_dynamic+train_loader.dataset.num_static,
+                hidden_size=config['dense_hidden_size'],
+                num_layers=config['dense_num_layers'],
+                activation=activation,
+                dropout_in=config['dropout_in'],
+                dropout_linear=config['dropout_linear']
+            )
+        else:
+            model = LSTM(
+                num_dynamic=train_loader.dataset.num_dynamic,
+                num_static=train_loader.dataset.num_static,
+                lstm_hidden_size=config['lstm_hidden_size'],
+                lstm_num_layers=config['lstm_num_layers'],
+                dense_hidden_size=config['dense_hidden_size'],
+                dense_num_layers=config['dense_num_layers'],
+                output_size=1,
+                dropout_in=config['dropout_in'],
+                dropout_lstm=config['dropout_lstm'],
+                dropout_linear=config['dropout_linear'],
+                dense_activation=activation
+            )
 
         if not isinstance(model, BaseModule):
             raise ValueError(
@@ -88,7 +115,7 @@ class Emulator(tune.Trainable):
             model=model,
             optimizer=optimizer,
             loss_fn=loss_fn,
-            train_seq_length=self.hc_config['train_slice_length'],
+            train_seq_length=self.hc_config['time']['train_seq_length'],
             train_sample_size=self.hc_config['train_sample_size']
         )
 
@@ -108,10 +135,9 @@ class Emulator(tune.Trainable):
         if not self.is_tune:
             self._save(os.path.dirname(os.path.dirname(self.logdir)))
 
-    def _predict(self, prediction_dir):
+    def _predict(self, prediction_dir, predict_training_set=False):
 
-        self.trainer.predict(
-            prediction_dir)
+        self.trainer.predict(prediction_dir, predict_training_set)
 
     def _save(self, path):
         path = os.path.join(path, 'model.pth')

@@ -7,7 +7,7 @@ import pickle
 import shutil
 import logging
 
-os.environ["CUDA_VISIBLE_DEVICES"] = '3'
+os.environ["CUDA_VISIBLE_DEVICES"] = '7'
 
 
 def parse_args():
@@ -32,12 +32,6 @@ def parse_args():
         '--small_aoi',
         '-T',
         help='Flag to perform a test run; only a fraction of the data is evaluated in each epoch.',
-        action='store_true'
-    )
-
-    parser.add_argument(
-        '--permute',
-        help='Whether to permute the sequence of input of output data during training.',
         action='store_true'
     )
 
@@ -68,6 +62,8 @@ def tune(args):
 
     config = get_config(args.config_name)
     config.update({'is_tune': False})
+    config['time'].update({'train_seq_length': 0})
+    config.update({'permute': False})
 
     model_tune_store = get_target_path(config, mode='modeltune')
     model_restore_path = os.path.join(
@@ -105,7 +101,8 @@ def tune(args):
     print('Restoring model from: ', model_restore_path)
     e = Emulator(best_config)
     e._restore(model_restore_path)
-    e._predict(store)
+    e._predict(store, predict_training_set=False)
+    e._predict(store, predict_training_set=True)
 
 
 if __name__ == '__main__':

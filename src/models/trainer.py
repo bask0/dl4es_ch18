@@ -5,9 +5,10 @@ import xarray as xr
 import datetime
 import sys
 import os
+from torch.optim.lr_scheduler import LambdaLR
 
 from utils.loggers import EpochLogger
-from torch.optim.lr_scheduler import StepLR
+from utils.lr_scheduler import cos_decay_with_warmup
 
 
 class Trainer(object):
@@ -29,7 +30,8 @@ class Trainer(object):
         self.train_seq_length = train_seq_length
         self.train_sample_size = 9999999999 if train_sample_size is None else train_sample_size
 
-        self.scheduler = StepLR(self.optimizer, step_size=1, gamma=0.95)
+        scheduler_lambda = cos_decay_with_warmup(warmup=5, T=220, start_val=0.01)
+        self.scheduler = LambdaLR(self.optimizer, lr_lambda=scheduler_lambda)
 
         self.epoch = 0
 
@@ -41,10 +43,11 @@ class Trainer(object):
     def train_epoch(self):
         self.model.train()
 
-        for step, (features_d, target, _) in enumerate(self.train_loader):
+        for step, (features_d, features_s, target, _) in enumerate(self.train_loader):
 
             if torch.cuda.is_available():
                 features_d = features_d.cuda(non_blocking=True)
+                features_s = features_s.cuda(non_blocking=True)
                 target = target.cuda(non_blocking=True)
 
             # if torch.isnan(features).any():
@@ -54,12 +57,12 @@ class Trainer(object):
             #     raise ValueError(
             #         'NaN in target in training, training stopped.')
 
-            pred = self.model(features_d)
+            pred = self.model(features_d, features_s)
 
             loss = self.loss_fn(
                 pred[:, self.train_loader.dataset.num_warmup_steps:],
                 target[:, self.train_loader.dataset.num_warmup_steps:])
-            
+
             self.optimizer.zero_grad()
             loss.backward()
 
@@ -90,10 +93,11 @@ class Trainer(object):
     def eval_epoch(self):
         self.model.eval()
 
-        for step, (features_d, target, _) in enumerate(self.eval_loader):
+        for step, (features_d, features_s, target, _) in enumerate(self.eval_loader):
 
             if torch.cuda.is_available():
                 features_d = features_d.cuda(non_blocking=True)
+                features_s = features_s.cuda(non_blocking=True)
                 target = target.cuda(non_blocking=True)
 
             # if torch.isnan(features).any():
@@ -103,7 +107,7 @@ class Trainer(object):
             #     raise ValueError(
             #         'NaN in targets in evaluation, training stopped.')
 
-            pred = self.model(features_d)
+            pred = self.model(features_d, features_s)
 
             loss = self.loss_fn(
                 pred[:, self.eval_loader.dataset.num_warmup_steps:],
@@ -129,11 +133,21 @@ class Trainer(object):
         }
 
     @torch.no_grad()
-    def predict(self, target_dir):
+    def predict(self, target_dir, use_training_set=False):
         self.model.eval()
 
+        if use_training_set:
+            print('\npredicting training set\n')
+        else:
+            print('\npredicting test set\n')
+
         print('Prediction saved to: ', target_dir)
-        xr_var = self.eval_loader.dataset.get_empty_xr()
+        if use_training_set:
+            data_loader = self.train_loader
+        else:
+            data_loader = self.eval_loader
+
+        xr_var = data_loader.dataset.get_empty_xr()
 
         pred_array = np.zeros(xr_var.shape, dtype=np.float32)
         obs_array = np.zeros(xr_var.shape, dtype=np.float32)
@@ -141,28 +155,22 @@ class Trainer(object):
         pred_array.fill(np.nan)
         obs_array.fill(np.nan)
 
-        for step, (features_d, target, (lat, lon)) in enumerate(self.eval_loader):
+        for step, (features_d, features_s, target, (lat, lon)) in enumerate(data_loader):
 
             print_progress(
                 np.min((
                     (step + 1) *
-                    self.eval_loader.batch_size, len(self.eval_loader.dataset)
-                )), len(self.eval_loader.dataset), 'predicting')
+                    data_loader.batch_size, len(data_loader.dataset)
+                )), len(data_loader.dataset), 'predicting')
 
             if torch.cuda.is_available():
                 features_d = features_d.cuda(non_blocking=True)
+                features_s = features_s.cuda(non_blocking=True)
                 target = target.cuda(non_blocking=True)
 
-            # if torch.isnan(features).any():
-            #     raise ValueError(
-            #         'NaN in features in evaluation, training stopped.')
-            # if torch.isnan(targets).any():
-            #     raise ValueError(
-            #         'NaN in targets in evaluation, training stopped.')
-
-            pred = self.model(features_d)
-            pred = pred[:, self.eval_loader.dataset.num_warmup_steps:]
-            target = target[:, self.eval_loader.dataset.num_warmup_steps:]
+            pred = self.model(features_d, features_s)
+            pred = pred[:, data_loader.dataset.num_warmup_steps:]
+            target = target[:, data_loader.dataset.num_warmup_steps:]
 
             pred = self.unstandardize_target(pred)
             target = self.unstandardize_target(target)
@@ -170,8 +178,6 @@ class Trainer(object):
             loss = self.loss_fn(
                 pred,
                 target)
-            #if torch.isnan(loss):
-            #    raise ValueError('Eval loss is NaN.')
 
             lat = lat.numpy()
             lon = lon.numpy()
@@ -201,7 +207,7 @@ class Trainer(object):
         pred_space_optim = pred.chunk({
             'lat': -1,
             'lon': -1,
-            'time': 1
+            'time': 15
         })
 
         pred_time_optim = pred.chunk({
@@ -210,8 +216,15 @@ class Trainer(object):
             'time': -1
         })
 
-        pred_space_optim.to_zarr(os.path.join(target_dir, 'pred_so.zarr'))
-        pred_time_optim.to_zarr(os.path.join(target_dir, 'pred_to.zarr'))
+        if use_training_set:
+            file_name_ending = '_trainset'
+        else:
+            file_name_ending = ''
+
+        pred_space_optim.to_zarr(os.path.join(
+            target_dir, f'pred_so{file_name_ending}.zarr'))
+        pred_time_optim.to_zarr(os.path.join(
+            target_dir, f'pred_to{file_name_ending}.zarr'))
 
         print('Done.')
 

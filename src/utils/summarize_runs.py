@@ -4,7 +4,7 @@ Analyze a ray.tune run; plot training curves, show best run etc.
 
 import argparse
 from typing import Dict, Any
-from ray.tune.analysis import ExperimentAnalysis
+from ray.tune.analysis import Analysis
 import os
 import shutil
 import glob2
@@ -38,7 +38,7 @@ def parse_args() -> Dict[str, Any]:
         '-p',
         '--path',
         type=str,
-        help='experiment state file (.json)'
+        help='experiment directory'
     )
 
     parser.add_argument(
@@ -83,36 +83,35 @@ def parse_args() -> Dict[str, Any]:
     return args
 
 
-def summarize_run(store):
+def summarize_run_(store):
     exp_state_file = glob2.glob(os.path.join(
         store, '*', 'experiment_state-*.json'))
     if len(exp_state_file) != 1:
         raise ValueError(
             f'Cannot sumarize runs - number of experiment state files != 1 \n{exp_state_file}')
-    summarize(
+    summarize_run(
         path=exp_state_file[0],
         infer_cp_dir=True,
         overwrite=True)
 
 
-def summarize(
+def summarize_run(
         path: str,
         cp_dir: str = 'None',
-        infer_cp_dir: bool = False,
+        infer_cp_dir: bool = True,
         train_metric: str = DEFAULT_TRAIN_METRIC,
         eval_metric: str = DEFAULT_VALID_METRIC,
         overwrite: bool = False,
         return_analysis: bool = False) -> None:
 
-    print(f'\nLoading experiment state file loaded from:  \n{path}\n')
+    print(f'\nLoading experiment from:  \n{path}\n')
 
-    if not os.path.isfile(path):
-        raise ValueError(f'Path does not exist or is directory:\n{path}')
-    if path[-5:] != '.json':
-        raise ValueError(f'Not a .json file:\n{path}')
+    #if not os.path.isfile(path):
+    #    raise ValueError(f'Path does not exist or is directory:\n{path}')
+    #if path[-5:] != '.json':
+    #    raise ValueError(f'Not a .json file:\n{path}')
 
-    summary_dir = os.path.join(os.path.dirname(
-        os.path.dirname(path)), 'summary')
+    summary_dir = os.path.join(path, 'summary')
 
     if os.path.isdir(summary_dir):
         if not overwrite:
@@ -143,7 +142,7 @@ def summarize(
             shutil.rmtree(cp_dir)
         os.makedirs(cp_dir_base, exist_ok=True)
 
-    exp = ExperimentAnalysis(path)
+    exp = Analysis(path)
 
     if return_analysis:
         return exp
@@ -257,7 +256,7 @@ if __name__ == '__main__':
 
     args = parse_args()
 
-    summarize(
+    summarize_run(
         args.path,
         args.cp_dir,
         args.infer_cp_dir,

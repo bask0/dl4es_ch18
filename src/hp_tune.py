@@ -13,7 +13,9 @@ import shutil
 import numpy as np
 import logging
 
-os.environ["CUDA_VISIBLE_DEVICES"] = '0,1,2,3'
+os.environ["CUDA_VISIBLE_DEVICES"] = '4,5,6,7'
+
+# ipython -- hp_tune.py -c n_sm.n_perm -O && ipython -- hp_tune.py -c w_sm.n_perm -O && ipython -- hp_tune.py -c n_sm.w_perm -O && ipython -- hp_tune.py -c w_sm.w_perm -O
 
 
 def parse_args():
@@ -155,7 +157,7 @@ def tune(args):
         stop={'patience_counter': config['patience']}
     )
 
-    summarize_run(store)
+    summarize_run(store, overwrite=True)
 
 
 if __name__ == '__main__':

@@ -48,11 +48,10 @@ def parcall(
     Parameters
     ----------
     fun
-        Function to be executed in parallel. Must take arguments 
-        
-        must take the input file path as
-        first argument and if ``out_files`` is not ``None`` the output file path
-        as second argument, You can pass function arguments via ``fun_kwargs``.
+        Function to be executed in parallel. Must take arguments must take the
+        input file path as first argument and if ``out_files`` is not ``None``
+        the output file path as second argument, You can pass function arguments
+        via ``fun_kwargs``.
     iter_kwargs
         A dictionary with the items to parallelize over in the fist dimension
         and keywords in a subdict. All subitems must match a keyword in
@@ -64,8 +63,8 @@ def parcall(
     ray_init_kwargs
         Keayword arguments passed to ``ray.init``.
     kwargs:
-        Keyword arguments passed to ``fun``. Use this for arguments that remain constant
-        over the different calls. See ``Notes``.
+        Keyword arguments passed to ``fun``. Use this for arguments that remain
+        constant over the different calls. See ``Notes``.
 
     """
 

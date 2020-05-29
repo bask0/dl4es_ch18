@@ -20,10 +20,11 @@ Run:
 To run hyperparameter turing, model training and inference, use the following command from the `src` directory:
 
 `ipython -- hp_tune.py -c [config name] -O && ipython -- model_tune.py -c [config name] -O && ipython -- inference.py -c [config name] -O`
-
 replace `[config name]` with one of:
 
 * n_sm.n_perm: do not use soil moisture as predictor / do not permute time-series
 * w_sm.n_perm: use soil moisture as predictor / do not permute time-series
 * w_sm.w_perm: use soil moisture as predictor / permute time-series
 * n_sm.w_perm: do not use soil moisture as predictor / permute time-series
+
+ipython -- hp_tune.py -c n_sm.n_perm -O && ipython -- model_tune.py -c n_sm.n_perm -O && ipython -- inference.py -c n_sm.n_perm -O

@@ -1,13 +1,13 @@
 {
   "dropout_in": 0.0,
   "dropout_linear": 0.2,
-  "dropout_lstm": 0.30000000000000004,
+  "dropout_lstm": 0.1,
   "fold": -1,
   "hc_config": {
     "batch_size": 32,
     "data_path": "/scratch/dl_chapter14/data/data.zarr/",
     "experiment_name": "n_sm.n_perm",
-    "grace_period": 0,
+    "grace_period": 100,
     "halving_factor": 3,
     "input_vars": [
       "ccover",
@@ -27,11 +27,11 @@
     ],
     "is_tune": false,
     "loss_fn": "MSE",
-    "max_t": 100,
+    "max_t": 120,
     "metric": "loss_eval",
     "ncpu_per_run": 20,
     "ngpu_per_run": 1.0,
-    "num_samples": 128,
+    "num_samples": 200,
     "num_workers": 14,
     "optimizer": "Adam",
     "patience": 5,
@@ -56,8 +56,8 @@
     "train_slice_length": 3650,
     "warmup": 5
   },
-  "hidden_size": 120,
+  "hidden_size": 100,
   "learning_rate": 0.01,
-  "num_layers": 1,
-  "weight_decay": 0.0001
+  "num_layers": 3,
+  "weight_decay": 0.001
 }

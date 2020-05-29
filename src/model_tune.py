@@ -10,7 +10,7 @@ import shutil
 import numpy as np
 import logging
 
-os.environ["CUDA_VISIBLE_DEVICES"] = '3'
+os.environ["CUDA_VISIBLE_DEVICES"] = '7'
 
 
 def parse_args():
@@ -111,6 +111,7 @@ def tune(args):
         f'  Available resources: {ngpu} GPUs | {ncpu} CPUs\n'
         f'  Number of concurrent runs: {max_concurrent}\n'
     )
+    config['ncpu_per_run'] = config['ncpu_per_run'] * 2
 
     ray.tune.run(
         Emulator,
@@ -132,7 +133,7 @@ def tune(args):
         }
     )
 
-    summarize_run(store)
+    summarize_run(store, overwrite=True)
 
 
 if __name__ == '__main__':
