@@ -13,9 +13,7 @@ import shutil
 import numpy as np
 import logging
 
-os.environ["CUDA_VISIBLE_DEVICES"] = '4,5,6,7'
-
-# ipython -- hp_tune.py -c n_sm.n_perm -O && ipython -- hp_tune.py -c w_sm.n_perm -O && ipython -- hp_tune.py -c n_sm.w_perm -O && ipython -- hp_tune.py -c w_sm.w_perm -O
+os.environ["CUDA_VISIBLE_DEVICES"] = '4,5,6'
 
 
 def parse_args():
@@ -56,25 +54,6 @@ def parse_args():
             'Running experiment in test mode; Not all data is used for training!')
 
     return args
-
-    def _train(self):
-        train_stats = self.trainer.train_epoch()
-        test_stats = self.trainer.test_epoch()
-
-        stats = {**train_stats, **test_stats}
-
-        # Disable early stopping before 'grace period' is reched.
-        if stats['epoch'] < self.hc_config['grace_period']:
-            stats['patience_counter'] = -1
-
-        return stats
-
-    def _save(self, path):
-        path = os.path.join(path, 'model.pth')
-        return self.trainer.save(path)
-
-    def _restore(self, path):
-        self.trainer.restore(path)
 
 
 def tune(args):

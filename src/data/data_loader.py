@@ -36,8 +36,6 @@ class Data(Dataset):
         'Notes' for more details. If 'True', the 'fold' argument has no effect.
     small_aoi: bool
         If True, a subset of the data is used (Europe and Western Asia).
-    permute_time: bool
-        Whether to permute the samples, default is False.
 
     Returns
     ----------
@@ -58,8 +56,7 @@ class Data(Dataset):
             partition_set,
             fold=None,
             is_tune=False,
-            small_aoi=False,
-            permute_time=False):
+            small_aoi=False):
 
         if partition_set not in ['train', 'eval']:
             raise ValueError(
@@ -82,7 +79,7 @@ class Data(Dataset):
         self.fold = fold
         self.is_tune = is_tune
         self.small_aoi = small_aoi
-        self.permute_time = permute_time if partition_set == 'train' else False
+        # self.permute_time = permute_time if partition_set == 'train' else False
 
         self.config = config
         self.data_path = self.config['data_path']
@@ -274,15 +271,15 @@ class Data(Dataset):
 
     def _check_all_vars_present_in_dataset(self):
         def msg(
-            x): return f'Variable ``{x}`` not found in dataset located at {self.config["path"]}'
+            x): return f'Variable ``{x}`` not found in dataset located at {self.config["path"]}.'
 
         for var in self.input_vars + self.input_vars_static + [self.target_var]:
             if var not in self.ds:
                 raise ValueError(msg(var))
 
     def _check_var_time_dim(self):
-        def msg(
-            x, y): return f'Variable ``{x}`` seems to be {"non-" if y else ""}temporal, check the variable arguments.'
+        def msg(x, y):
+            return f'Variable ``{x}`` seems to be {"non-" if y else ""}temporal, check the variable arguments.'
 
         for var in self.input_vars + [self.target_var]:
             if self.ds[var].ndim != 3:

@@ -29,17 +29,7 @@ class Emulator(tune.Trainable):
         self.hc_config = config['hc_config']
         self.is_tune = self.hc_config['is_tune']
 
-        if self.config['dense_activation'] == 'relu':
-            activation = torch.nn.ReLU()
-        elif self.config['dense_activation'] == 'tanh':
-            activation = torch.nn.Tanh()
-        elif self.config['dense_activation'] == 'selu':
-            activation = torch.nn.SELU()
-        else:
-            raise ValueError(
-                'The configuration `dense_activation` must be one of '
-                f'(`relu`, `tanh`, `selu`) but is `{self.hc_config["dense_activation"]}``.'
-            )
+        activation = torch.nn.ReLU()
 
         train_loader = get_dataloader(
             self.hc_config,
@@ -47,7 +37,6 @@ class Emulator(tune.Trainable):
             is_tune=self.is_tune,
             small_aoi=self.hc_config['small_aoi'],
             fold=-1,
-            permute_time=self.hc_config['permute'],
             batch_size=self.hc_config['batch_size'],
             shuffle=True,
             drop_last=True,
@@ -60,7 +49,6 @@ class Emulator(tune.Trainable):
             is_tune=self.is_tune,
             small_aoi=self.hc_config['small_aoi'],
             fold=-1,
-            permute_time=False,
             batch_size=self.hc_config['batch_size'],
             shuffle=True,
             drop_last=False,
@@ -68,7 +56,7 @@ class Emulator(tune.Trainable):
             pin_memory=self.hc_config['pin_memory']
         )
 
-        if self.hc_config['permute']:
+        if not self.hc_config['is_temporal']:
             model = DENSE(
                 input_size=train_loader.dataset.num_dynamic+train_loader.dataset.num_static,
                 hidden_size=config['dense_hidden_size'],
@@ -153,7 +141,6 @@ def get_dataloader(
         is_tune,
         small_aoi=False,
         fold=None,
-        permute_time=False,
         **kwargs):
 
     dataset = Data(
@@ -161,8 +148,7 @@ def get_dataloader(
         partition_set=partition_set,
         is_tune=is_tune,
         small_aoi=small_aoi,
-        fold=fold,
-        permute_time=permute_time)
+        fold=fold)
     dataloader = DataLoader(
         dataset=dataset,
         **kwargs

@@ -62,12 +62,11 @@ def tune(args):
 
     config = get_config(args.config_name)
     config.update({'is_tune': False})
-    config['time'].update({'train_seq_length': 0})
-    config.update({'permute': False})
 
     model_tune_store = get_target_path(config, mode='modeltune')
     model_restore_path = os.path.join(
         model_tune_store,
+        'Emulator',
         'model.pth'
     )
     store = get_target_path(config, mode='inference')
@@ -97,6 +96,9 @@ def tune(args):
     best_config['hc_config']['ngpu_per_run'] = 1
     best_config['hc_config']['num_workers'] = 20
     best_config['hc_config']['batch_size'] = 200
+
+    # Use full sequence for predictions.
+    best_config['hc_config']['time']["train_seq_length"] = 0
 
     print('Restoring model from: ', model_restore_path)
     e = Emulator(best_config)

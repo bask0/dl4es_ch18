@@ -31,6 +31,7 @@ def plot_map(
         ax=None,
         figsize=(14, 7),
         subplot_kw={},
+        cbar_kw={},
         hist_kw={},
         **kwargs):
     """Plot global map.
@@ -117,8 +118,8 @@ def plot_map(
             transform=ccrs.PlateCarree(),
             **kwargs)
     ax.set_global()
-    ax.coastlines()
-    ax.gridlines()
+    ax.coastlines(linewidth=0.5)
+    ax.gridlines(linewidth=0.5, color='k', alpha=0.5, linestyle='--')
 
     ax.xformatter = LONGITUDE_FORMATTER
     ax.yformatter = LATITUDE_FORMATTER

@@ -56,12 +56,10 @@ class DENSE(BaseModule):
 
     def forward(self, d: torch.Tensor, s: torch.Tensor):
         out = torch.cat(
-            (
-                self.dropout_in(d), s.expand(d.size(0), d.size(1), s.size(2))
-            ), -1
+            (d, s.expand(d.size(0), d.size(1), s.size(2))), -1
         )
 
-        return self.dense(out)
+        return self.dense(self.dropout_in(out))
 
 
 class MultiLinear(nn.Module):

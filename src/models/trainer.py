@@ -6,6 +6,7 @@ import datetime
 import sys
 import os
 from torch.optim.lr_scheduler import LambdaLR
+from warnings import warn
 
 from utils.loggers import EpochLogger
 from utils.lr_scheduler import cos_decay_with_warmup
@@ -20,17 +21,19 @@ class Trainer(object):
             optimizer,
             loss_fn,
             train_seq_length,
-            train_sample_size=None):
+            train_sample_size=None,
+            gradient_clipping=0.05):
         self.train_loader = train_loader
         self.eval_loader = eval_loader
         self.model = model.cuda() if torch.cuda.is_available() else model
-        self.model.weight_init()
+        # self.model.weight_init()
         self.optimizer = optimizer
         self.loss_fn = loss_fn
         self.train_seq_length = train_seq_length
         self.train_sample_size = 9999999999 if train_sample_size is None else train_sample_size
+        self.gradient_clipping = gradient_clipping
 
-        scheduler_lambda = cos_decay_with_warmup(warmup=5, T=220, start_val=0.01)
+        scheduler_lambda = cos_decay_with_warmup(warmup=5, T=200, start_val=0.00001)
         self.scheduler = LambdaLR(self.optimizer, lr_lambda=scheduler_lambda)
 
         self.epoch = 0
@@ -43,6 +46,8 @@ class Trainer(object):
     def train_epoch(self):
         self.model.train()
 
+        nan_counter = 0
+
         for step, (features_d, features_s, target, _) in enumerate(self.train_loader):
 
             if torch.cuda.is_available():
@@ -50,12 +55,15 @@ class Trainer(object):
                 features_s = features_s.cuda(non_blocking=True)
                 target = target.cuda(non_blocking=True)
 
-            # if torch.isnan(features).any():
-            #     raise ValueError(
-            #         'NaN in features in training, training stopped.')
-            # if torch.isnan(targets).any():
-            #     raise ValueError(
-            #         'NaN in target in training, training stopped.')
+            #if torch.isnan(features_d).any():
+            #    raise ValueError(
+            #        'NaN in dynamic features during training, training stopped.')
+            #if torch.isnan(features_s).any():
+            #    raise ValueError(
+            #        'NaN in static features during training, training stopped.')
+            #if torch.isnan(target).any():
+            #    raise ValueError(
+            #        'NaN in target during training, training stopped.')
 
             pred = self.model(features_d, features_s)
 
@@ -67,7 +75,20 @@ class Trainer(object):
             loss.backward()
 
             if torch.isnan(loss):
-                raise ValueError('Training loss is NaN, training stopped.')
+                # This is a debugging feature, if NaNs occur, possible a bug or unstable
+                # model.
+                nan_counter += 1
+                if nan_counter > 9:
+                    raise ValueError(
+                        'Training loss was NaN >5 times, training stopped.')
+                warn(
+                    f'Training loss was NaN {nan_counter} time{"" if nan_counter==1 else "s"} '
+                    'in a row, stopping after >9.')
+
+                continue
+
+            torch.nn.utils.clip_grad_norm_(
+                self.model.parameters(), self.gradient_clipping)
 
             self.optimizer.step()
 
@@ -86,6 +107,7 @@ class Trainer(object):
 
         return {
             'epoch': self.epoch,
+            'lr': self.scheduler.get_last_lr()[0],
             **stats
         }
 

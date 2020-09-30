@@ -3,11 +3,13 @@ Calculate metrics like correlation or rmse on multidimensional array along given
 using dask.
 
 Metrics implemented:
-* correlation           > xr_corr
-* rmse                  > xr_rmse
-* mean percentage error > xr_mpe
-* bias                  > xr_bias
-* modeling effficiency  > xr_mef
+ * correlation           > xr_corr
+ * rmse                  > xr_rmse
+ * mean percentage error > xr_mpe
+ * bias                  > xr_bias
+ * phaseerr              > xr_phaseerr
+ * varerr                > xr_varerr
+ * modeling effficiency  > xr_mef
 
 Only values present in both datasets are used to calculate metrics.
 
@@ -23,17 +25,20 @@ def pearson_cor_gufunc(mod, obs):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=RuntimeWarning)
 
-        valid_values = np.isfinite(mod) & np.isfinite(obs)
+        mod_ = mod.copy()
+        obs_ = obs.copy()
+
+        valid_values = np.isfinite(mod_) & np.isfinite(obs_)
         valid_count = valid_values.sum(axis=-1)
 
-        mod[~valid_values] = np.nan
-        obs[~valid_values] = np.nan
+        mod_[~valid_values] = np.nan
+        obs_[~valid_values] = np.nan
 
-        mod -= np.nanmean(mod, axis=-1, keepdims=True)
-        obs -= np.nanmean(obs, axis=-1, keepdims=True)
+        mod_ -= np.nanmean(mod_, axis=-1, keepdims=True)
+        obs_ -= np.nanmean(obs_, axis=-1, keepdims=True)
 
-        cov = np.nansum(mod * obs, axis=-1) / valid_count
-        std_xy = (np.nanstd(mod, axis=-1) * np.nanstd(obs, axis=-1))
+        cov = np.nansum(mod_ * obs_, axis=-1) / valid_count
+        std_xy = (np.nanstd(mod_, axis=-1) * np.nanstd(obs_, axis=-1))
 
         corr = cov / std_xy
 
@@ -48,7 +53,8 @@ def xr_corr(mod, obs, dim):
         output_dtypes=[float],
         keep_attrs=True)
     m.attrs.update({'long_name': 'corr', 'units': '-'})
-    m.name = 'corr'
+    if isinstance(mod, xr.DataArray):
+        m.name = 'corr'
     return m
 
 
@@ -71,7 +77,8 @@ def xr_rmse(mod, obs, dim):
         output_dtypes=[float],
         keep_attrs=True)
     m.attrs.update({'long_name': 'rmse'})
-    m.name = 'rmse'
+    if isinstance(mod, xr.DataArray):
+        m.name = 'rmse'
     return m
 
 
@@ -91,7 +98,8 @@ def xr_mpe(mod, obs, dim):
         output_dtypes=[float],
         keep_attrs=True)
     m.attrs.update({'long_name': 'mpe', 'units': '%'})
-    m.name = 'mpe'
+    if isinstance(mod, xr.DataArray):
+        m.name = 'mpe'
     return m
 
 
@@ -99,12 +107,15 @@ def bias_gufunc(mod, obs):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=RuntimeWarning)
 
-        valid_values = np.isfinite(mod) & np.isfinite(obs)
+        mod_ = mod.copy()
+        obs_ = obs.copy()
 
-        mod[~valid_values] = np.nan
-        obs[~valid_values] = np.nan
+        valid_values = np.isfinite(mod_) & np.isfinite(obs_)
 
-        return np.nanmean(mod, axis=-1) - np.nanmean(obs, axis=-1)
+        mod_[~valid_values] = np.nan
+        obs_[~valid_values] = np.nan
+
+        return np.nanmean(mod_, axis=-1) - np.nanmean(obs_, axis=-1)
 
 
 def xr_bias(mod, obs, dim):
@@ -115,7 +126,8 @@ def xr_bias(mod, obs, dim):
         output_dtypes=[float],
         keep_attrs=True)
     m.attrs.update({'long_name': 'bias'})
-    m.name = 'bias'
+    if isinstance(mod, xr.DataArray):
+        m.name = 'bias'
     return m
 
 
@@ -123,12 +135,15 @@ def varerr_gufunc(mod, obs):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=RuntimeWarning)
 
-        valid_values = np.isfinite(mod) & np.isfinite(obs)
+        mod_ = mod.copy()
+        obs_ = obs.copy()
 
-        mod[~valid_values] = np.nan
-        obs[~valid_values] = np.nan
+        valid_values = np.isfinite(mod_) & np.isfinite(obs_)
 
-        return np.square(mod.std(-1) - obs.std(-1))
+        mod_[~valid_values] = np.nan
+        obs_[~valid_values] = np.nan
+
+        return np.square(mod_.std(-1) - obs_.std(-1))
 
 
 def xr_varerr(mod, obs, dim):
@@ -139,7 +154,8 @@ def xr_varerr(mod, obs, dim):
         output_dtypes=[float],
         keep_attrs=True)
     m.attrs.update({'long_name': 'varerr'})
-    m.name = 'varerr'
+    if isinstance(mod, xr.DataArray):
+        m.name = 'varerr'
     return m
 
 
@@ -147,12 +163,15 @@ def phaseerr_gufunc(mod, obs):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=RuntimeWarning)
 
-        valid_values = np.isfinite(mod) & np.isfinite(obs)
+        mod_ = mod.copy()
+        obs_ = obs.copy()
 
-        mod[~valid_values] = np.nan
-        obs[~valid_values] = np.nan
+        valid_values = np.isfinite(mod_) & np.isfinite(obs_)
 
-        return (1.0 - pearson_cor_gufunc(mod, obs)) * 2.0 * mod.std(-1) * obs.std(-1)
+        mod_[~valid_values] = np.nan
+        obs_[~valid_values] = np.nan
+
+        return (1.0 - pearson_cor_gufunc(mod_, obs_)) * 2.0 * mod_.std(-1) * obs_.std(-1)
 
 
 def xr_phaseerr(mod, obs, dim):
@@ -163,7 +182,8 @@ def xr_phaseerr(mod, obs, dim):
         output_dtypes=[float],
         keep_attrs=True)
     m.attrs.update({'long_name': 'phaseerr'})
-    m.name = 'phaseerr'
+    if isinstance(mod, xr.DataArray):
+        m.name = 'phaseerr'
     return m
 
 
@@ -171,68 +191,76 @@ def rel_bias_gufunc(mod, obs):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=RuntimeWarning)
 
-        valid_values = np.isfinite(x) & np.isfinite(y)
+        mod_ = mod.copy()
+        obs_ = obs.copy()
 
-        mod[~valid_values] = np.nan
-        obs[~valid_values] = np.nan
+        valid_values = np.isfinite(mod_) & np.isfinite(obs_)
 
-        return (np.nanmean(mod, axis=-1) - np.nanmean(obs, axis=-1)) / np.nanmean(x, axis=-1)
+        mod_[~valid_values] = np.nan
+        obs_[~valid_values] = np.nan
+
+        return (np.nanmean(mod_, axis=-1) - np.nanmean(obs_, axis=-1)) / np.nanmean(obs_, axis=-1)
 
 
-def xr_rel_bias(obs, mod, dim):
+def xr_rel_bias(mod, obs, dim):
     m = xr.apply_ufunc(
-        bias_gufunc, obs, mod,
+        bias_gufunc, mod, obs,
         input_core_dims=[[dim], [dim]],
         dask='parallelized',
         output_dtypes=[float],
         keep_attrs=True)
     m.attrs.update({'long_name': 'relative bias'})
-    m.name = 'rel_bias'
+    if isinstance(mod, xr.DataArray):
+        m.name = 'rel_bias'
     return m
 
 
-def mef_gufunc(x, y):
+def mef_gufunc(mod, obs):
     # x is obs, y is mod
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=RuntimeWarning)
 
-        valid_values = np.isfinite(x) & np.isfinite(y)
+        mod_ = mod.copy()
+        obs_ = obs.copy()
 
-        x[~valid_values] = np.nan
-        y[~valid_values] = np.nan
+        valid_values = np.isfinite(mod_) & np.isfinite(obs_)
 
-        sse = np.nansum(np.power(x-y, 2), axis=-1)
+        mod_[~valid_values] = np.nan
+        obs_[~valid_values] = np.nan
+
+        sse = np.nansum(np.power(mod_-obs_, 2), axis=-1)
         sso = np.nansum(
-            np.power(y-np.nanmean(y, axis=-1, keepdims=True), 2), axis=-1)
+            np.power(obs_-np.nanmean(obs_, axis=-1, keepdims=True), 2), axis=-1)
 
         mef = 1.0 - sse / sso
 
         return mef
 
 
-def xr_mef(obs, mod, dim):
+def xr_mef(mod, obs, dim):
     m = xr.apply_ufunc(
-        mef_gufunc, obs, mod,
+        mef_gufunc, mod, obs,
         input_core_dims=[[dim], [dim]],
         dask='parallelized',
         output_dtypes=[float],
         keep_attrs=True)
     m.attrs.update({'long_name': 'mef', 'units': '-'})
-    m.name = 'mef'
+    if isinstance(mod, xr.DataArray):
+        m.name = 'mef'
     return m
 
 
-def get_metric(obs, mod, fun, dim='time', verbose=False):
+def get_metric(mod, obs, fun, dim='time', verbose=False):
     """Calculate a metric along a dimension.
 
     Metrics implemented:
-    * correlation           > xr_corr
-    * rmse                  > xr_rmse
-    * mean percentage error > xr_mpe
-    * bias                  > xr_bias
-    * phaseerr              > xr_phaseerr
-    * varerr                > xr_varerr
-    * modeling effficiency  > xr_mef
+    * correlation           > corr
+    * rmse                  > rmse
+    * mean percentage error > mpe
+    * bias                  > bias
+    * phaseerr              > phaseerr
+    * varerr                > varerr
+    * modeling effficiency  > mef
 
     Only values present in both datasets are used to calculate metrics.
 
@@ -252,20 +280,20 @@ def get_metric(obs, mod, fun, dim='time', verbose=False):
 
     """
 
-    return fun(obs, mod, dim)
+    return fun(mod, obs, dim)
 
 
 def get_metrics(mod, obs, funs, dim='time', verbose=True):
     """Calculate multiple metrics along a dimension and combine into single dataset.
 
     Metrics implemented:      name
-    * correlation           > xr_corr
-    * rmse                  > xr_rmse
-    * mean percentage error > xr_mpe
-    * bias                  > xr_bias
-    * phaseerr              > xr_phaseerr
-    * varerr                > xr_varerr
-    * modeling effficiency  > xr_mef
+    * correlation           > corr
+    * rmse                  > rmse
+    * mean percentage error > mpe
+    * bias                  > bias
+    * phaseerr              > phaseerr
+    * varerr                > varerr
+    * modeling effficiency  > mef
 
     Only values present in both datasets are used to calculate metrics.
 
@@ -348,13 +376,14 @@ def _single_xr_quantile(x, q, dim):
         output_dtypes=[float],
         keep_attrs=True,
         kwargs={'q': q, 'axis': axes})
-    m.attrs.update({'long_name': f'{q}-quantile'})
-    m.name = 'quantile'
+    m.attrs.update({'long_name': f'{x.attrs.get("long_name", "")} quantile'})
+    if isinstance(m, xr.DataArray):
+        m.name = 'quantile'
     return m
 
 
 def xr_quantile(x, q, dim):
-    if not hasattr([1, 2], '__iter__'):
+    if not hasattr(q, '__iter__'):
         q = [q]
     quantiles = []
     for i, q_ in enumerate(q):
