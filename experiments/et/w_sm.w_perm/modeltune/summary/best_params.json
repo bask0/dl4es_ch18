@@ -1,12 +1,15 @@
 {
+  "dense_activation": "relu",
+  "dense_hidden_size": 200,
+  "dense_num_layers": 6,
   "dropout_in": 0.0,
   "dropout_linear": 0.0,
-  "dropout_lstm": 0.4,
+  "fold": -1,
   "hc_config": {
-    "batch_size": 32,
+    "batch_size": 64,
     "data_path": "/scratch/dl_chapter14/data/data.zarr/",
-    "experiment_name": "hydro",
-    "grace_period": 0,
+    "experiment_name": "w_sm.w_perm",
+    "grace_period": 50,
     "halving_factor": 3,
     "input_vars": [
       "ccover",
@@ -19,49 +22,42 @@
       "wind",
       "rainf",
       "snowf",
-      "et",
-      "mrlslfrac",
-      "mrro"
+      "mrlsl_shal",
+      "mrlsl_deep"
     ],
     "input_vars_static": [
       "soil_properties",
       "pft"
     ],
-    "is_test": false,
-    "is_tune": true,
+    "is_temporal": false,
+    "is_tune": false,
     "loss_fn": "MSE",
-    "max_t": 100,
+    "max_t": 120,
     "metric": "loss_eval",
-    "ncpu_per_run": 16,
+    "ncpu_per_run": 20,
     "ngpu_per_run": 1.0,
-    "noise_std": 0.0,
-    "num_samples": 128,
-    "num_workers": 10,
+    "num_samples": 134,
+    "num_workers": 8,
     "optimizer": "Adam",
-    "patience": 20,
-    "permute": false,
-    "pin_memory": true,
-    "shuffle": 0,
-    "store": "/scratch/dl_chapter14/experiments/et/noperm/hptune",
+    "patience": 30,
+    "pin_memory": false,
+    "small_aoi": false,
+    "store": "/scratch/dl_chapter14/experiments/et/w_sm.w_perm/modeltune",
     "target_var": "et",
     "time": {
       "eval": [
         "2000-01-01",
-        "2014-12-31"
+        "2013-12-31"
       ],
       "train": [
-        "1950-01-01",
+        "1981-01-01",
         "2000-12-31"
       ],
       "train_seq_length": 2000,
       "warmup": 5
     },
-    "train_sample_size": null,
-    "train_slice_length": 3650,
-    "warmup": 5
+    "train_sample_size": 600
   },
-  "hidden_size": 100,
   "learning_rate": 0.01,
-  "num_layers": 1,
   "weight_decay": 0.001
 }

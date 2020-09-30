@@ -10,7 +10,7 @@ import shutil
 import numpy as np
 import logging
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "7"
+os.environ["CUDA_VISIBLE_DEVICES"] = '7'
 
 
 def parse_args():
@@ -28,12 +28,6 @@ def parse_args():
         '--overwrite',
         '-O',
         help='Flag to overwrite existing runs (all existing runs will be lost!).',
-        action='store_true'
-    )
-
-    parser.add_argument(
-        '--permute',
-        help='Whether to permute the sequence of input of output data during training.',
         action='store_true'
     )
 
@@ -78,8 +72,8 @@ def tune(args):
     config = get_config(args.config_name)
     config.update({'is_tune': False})
 
-    tune_store = get_target_path(config, args, mode='hptune')
-    store = get_target_path(config, args, mode='modeltune')
+    tune_store = get_target_path(config, mode='hptune')
+    store = get_target_path(config, mode='modeltune')
 
     if args.overwrite:
         if os.path.isdir(store):
@@ -98,8 +92,7 @@ def tune(args):
 
     config.update({
         'store': store,
-        'small_aoi': args.small_aoi,
-        'permute': args.permute
+        'small_aoi': args.small_aoi
     })
 
     import torch
@@ -118,10 +111,10 @@ def tune(args):
         f'  Available resources: {ngpu} GPUs | {ncpu} CPUs\n'
         f'  Number of concurrent runs: {max_concurrent}\n'
     )
+    config['ncpu_per_run'] = config['ncpu_per_run'] * 2
 
     ray.tune.run(
         Emulator,
-        name=config['experiment_name'],
         config=best_config,
         resources_per_trial={
             'cpu': config['ncpu_per_run'],
@@ -140,7 +133,7 @@ def tune(args):
         }
     )
 
-    summarize_run(store)
+    summarize_run(store, overwrite=True)
 
 
 if __name__ == '__main__':

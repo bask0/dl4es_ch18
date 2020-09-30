@@ -1,6 +1,7 @@
 from data.data_loader import Data
 from models.trainer import Trainer
 from models.lstm import LSTM
+from models.multilinear import DENSE
 from models.modules import BaseModule
 from ray import tune
 from torch.utils.data.dataloader import DataLoader
@@ -8,15 +9,14 @@ import torch
 import os
 
 
-def get_target_path(config, args, mode):
+def get_target_path(config, mode):
     if mode not in ['hptune', 'modeltune', 'inference']:
         raise ValueError(
-            'Argument `mode` must be one of (`hptune`, `modeltune`, `inference`) '
-            f'but is {mode}.')
+            'Argument `mode` must be one of (`hptune`, `modeltune`, `inference`) but is {mode}.')
     path = os.path.join(
         config["store"],
         config['target_var'],
-        'perm' if args.permute else 'noperm',
+        config['experiment_name'],
         mode)
     return path
 
@@ -29,13 +29,14 @@ class Emulator(tune.Trainable):
         self.hc_config = config['hc_config']
         self.is_tune = self.hc_config['is_tune']
 
+        activation = torch.nn.ReLU()
+
         train_loader = get_dataloader(
             self.hc_config,
             partition_set='train',
             is_tune=self.is_tune,
             small_aoi=self.hc_config['small_aoi'],
             fold=-1,
-            permute=self.hc_config['permute'],
             batch_size=self.hc_config['batch_size'],
             shuffle=True,
             drop_last=True,
@@ -49,21 +50,35 @@ class Emulator(tune.Trainable):
             small_aoi=self.hc_config['small_aoi'],
             fold=-1,
             batch_size=self.hc_config['batch_size'],
-            shuffle=False,
+            shuffle=True,
             drop_last=False,
             num_workers=self.hc_config['num_workers'],
             pin_memory=self.hc_config['pin_memory']
         )
 
-        model = LSTM(
-            input_size=train_loader.dataset.num_inputs,
-            hidden_size=config['hidden_size'],
-            num_layers=config['num_layers'],
-            output_size=1,
-            dropout_in=config['dropout_in'],
-            dropout_lstm=config['dropout_lstm'],
-            dropout_linear=config['dropout_linear']
-        )
+        if not self.hc_config['is_temporal']:
+            model = DENSE(
+                input_size=train_loader.dataset.num_dynamic+train_loader.dataset.num_static,
+                hidden_size=config['dense_hidden_size'],
+                num_layers=config['dense_num_layers'],
+                activation=activation,
+                dropout_in=config['dropout_in'],
+                dropout_linear=config['dropout_linear']
+            )
+        else:
+            model = LSTM(
+                num_dynamic=train_loader.dataset.num_dynamic,
+                num_static=train_loader.dataset.num_static,
+                lstm_hidden_size=config['lstm_hidden_size'],
+                lstm_num_layers=config['lstm_num_layers'],
+                dense_hidden_size=config['dense_hidden_size'],
+                dense_num_layers=config['dense_num_layers'],
+                output_size=1,
+                dropout_in=config['dropout_in'],
+                dropout_lstm=config['dropout_lstm'],
+                dropout_linear=config['dropout_linear'],
+                dense_activation=activation
+            )
 
         if not isinstance(model, BaseModule):
             raise ValueError(
@@ -88,7 +103,7 @@ class Emulator(tune.Trainable):
             model=model,
             optimizer=optimizer,
             loss_fn=loss_fn,
-            train_seq_length=self.hc_config['train_slice_length'],
+            train_seq_length=self.hc_config['time']['train_seq_length'],
             train_sample_size=self.hc_config['train_sample_size']
         )
 
@@ -108,10 +123,9 @@ class Emulator(tune.Trainable):
         if not self.is_tune:
             self._save(os.path.dirname(os.path.dirname(self.logdir)))
 
-    def _predict(self, prediction_file):
+    def _predict(self, prediction_dir, predict_training_set=False):
 
-        self.trainer.predict(
-            prediction_file)
+        self.trainer.predict(prediction_dir, predict_training_set)
 
     def _save(self, path):
         path = os.path.join(path, 'model.pth')
@@ -127,7 +141,6 @@ def get_dataloader(
         is_tune,
         small_aoi=False,
         fold=None,
-        permute=False,
         **kwargs):
 
     dataset = Data(
@@ -135,8 +148,7 @@ def get_dataloader(
         partition_set=partition_set,
         is_tune=is_tune,
         small_aoi=small_aoi,
-        fold=fold,
-        permute=permute)
+        fold=fold)
     dataloader = DataLoader(
         dataset=dataset,
         **kwargs

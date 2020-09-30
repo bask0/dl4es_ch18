@@ -2,7 +2,6 @@ import xarray as xr
 import zarr
 import numpy as np
 import pandas as pd
-import torch
 from torch.utils.data.dataset import Dataset
 
 
@@ -36,9 +35,7 @@ class Data(Dataset):
         If 'True', a subset fo the data will be sampled for tuning of hyperparameters. See
         'Notes' for more details. If 'True', the 'fold' argument has no effect.
     small_aoi: bool
-        If True, a subset of the data is used (Europe).
-    permute: bool
-        Whether to permute the samples, default is False.
+        If True, a subset of the data is used (Europe and Western Asia).
 
     Returns
     ----------
@@ -59,8 +56,7 @@ class Data(Dataset):
             partition_set,
             fold=None,
             is_tune=False,
-            small_aoi=False,
-            permute=False):
+            small_aoi=False):
 
         if partition_set not in ['train', 'eval']:
             raise ValueError(
@@ -79,22 +75,20 @@ class Data(Dataset):
         self.input_vars_static = config['input_vars_static']
         self.target_var = config['target_var']
 
-        self.num_inputs = len(self.input_vars) + len(self.input_vars_static)
-
         self.partition_set = partition_set
         self.fold = fold
         self.is_tune = is_tune
         self.small_aoi = small_aoi
-        self.permute = permute if partition_set == 'train' else False
+        # self.permute_time = permute_time if partition_set == 'train' else False
 
         self.config = config
+        self.data_path = self.config['data_path']
 
-        ds = xr.open_zarr(self.config['data_path'])
-        self.dynamic_vars, self.static_vars = self._get_static_and_dynamic_varnames(
-            ds)
+        ds = xr.open_zarr(self.data_path)
+        self.dynamic_vars, self.static_vars = self._get_static_and_dynamic_varnames(ds)
 
         self.time_slicer = TimeSlice(
-            ds_path=self.config['data_path'],
+            ds_path=self.data_path,
             date_range=config['time'][partition_set],
             warmup=config['time']["warmup"],
             partition_set=partition_set,
@@ -105,9 +99,14 @@ class Data(Dataset):
         mask = ds['mask']
 
         if small_aoi:
-            # Set mask outside Europe to 0.
+            # Reduce AOI size.
             print('Test run: training on lat > 0 & lon > 0')
-            mask = mask.where((mask.lat > 0) & (mask.lon > 0), 0, drop=False)
+            mask = mask.where((
+                mask.lat > 35) & (
+                mask.lat < 70) & (
+                mask.lon > 0) & (
+                mask.lon < 120
+            ), 0, drop=False)
 
         # The mask contains 0 for non-valid pixels and integers > 0 for the folds. Here, we get
         # all fold integers.
@@ -127,7 +126,7 @@ class Data(Dataset):
 
         # For other model runs, the fold is used for validationg, while all other folds are
         # used for training. E.g. if folds are [1, 2, 3] and fold is 1, the folds [2, 3] are
-        # for traiing and 1 for validation.
+        # for training and 1 for validation.
         else:
 
             if (fold < -1) or (fold == 0):
@@ -165,12 +164,53 @@ class Data(Dataset):
             } for var in np.setdiff1d(ds.data_vars, 'mask')
         }
 
-        self.ds = zarr.open(self.config['data_path'], mode='r')
+        self.ds = zarr.open(self.data_path, mode='r')
         self._check_all_vars_present_in_dataset()
         self._check_var_time_dim()
 
+        # Get classification dataset stats for one-hot encoding.
+        num_static = 0
+        self._static_class_stats = {}
+        for var in self.input_vars_static:
+            s = self.ds[var]
+            min_class = int(np.nanmin(s))
+            max_class = int(np.nanmax(s))
+            num_classes = max_class - min_class + 1
+            num_static += num_classes
+            self._static_class_stats.update({
+                var: {
+                    'min': min_class,
+                    'num_classes': num_classes
+                }
+            })
+
+        self.num_dynamic = len(self.input_vars)
+        self.num_static = num_static
+
     def __len__(self):
         return self.coords.shape[0]
+
+    def one_hot(self, val, var):
+        enc = np.zeros(
+            self._static_class_stats[var]['num_classes'], dtype=np.float32)
+        enc[int(val) - self._static_class_stats[var]['min']] = 1
+        return enc
+
+    def _sel_time(self, var, t_start, t_end, lat, lon):
+        """Select time range and pixel from data.
+
+        If the variable is soil moisture (SM) related, the time index
+        is shifted one to the past, as SM reflects the state at the
+        end of the day while fluxes like ET are integrated over a
+        day. SM at the end of the day cannot impact the fluxes during
+        the day and thus, the entire SM time-series is shifted such
+        that instead of  sm_2 -> et_2, we get sm_1 -> et_2.
+        """
+        if var in ('mrlsl_shal', 'mrlsl_deep'):
+            t_start -= 1
+            t_end -= 1
+
+        return self.ds[var][t_start:t_end, lat, lon]
 
     def __getitem__(self, inx):
         lat, lon = self.coords[inx]
@@ -180,21 +220,21 @@ class Data(Dataset):
         # Each single temporal variable has shape <time, lat, lon>. We select one coordinate, yielding
         # shape <time>. All variables are then stacked along last dimension, yielding <time, num_vars>
         features_d = np.stack(
-            [self.standardize(self.ds[var][t_start:t_end, lat, lon], var)
+            [self.standardize(self._sel_time(var, t_start, t_end, lat, lon), var)
              for var in self.input_vars],
             axis=-1
         )
 
         # Each single non-temporal variable has shape <lat, lon>. We select one coordinate, yielding
-        # shape <> (scalar). All variables are then stacked yielding <num_vars> and expanded in the
-        # first diension, yielding <1, num_vars>.
-        features_s = np.stack(
-            [self.standardize(self.ds[var][lat, lon], var)
+        # shape <> (scalar) and apply one-hot encoding. All variables are then concatenated into one
+        # vector and expanded in the first diension, yielding <1, num_classes>.
+        features_s = np.concatenate(
+            [self.one_hot(self.ds[var][lat, lon], var)
              for var in self.input_vars_static],
             axis=0
         ).reshape(1, -1)
-        features_s = features_s.repeat(features_d.shape[0], axis=0)
-        features_d = np.concatenate((features_d, features_s), axis=-1)
+        #features_s = features_s.repeat(features_d.shape[0], axis=0)
+        #features_d = np.concatenate((features_d, features_s), axis=-1)
 
         # The (temporal) target variable has shape <time, lat, lon>. We select one coordinate, yielding
         # shape <time>, and expand in the last dimension, yielding <time, 1>.
@@ -205,16 +245,16 @@ class Data(Dataset):
             raise ValueError('NaN in features, training stopped.')
 
         # Random permute time-series.
-        if self.permute:
-            perm_indx = torch.randperm(features_d.size(0))
-            features_d = features_d[perm_indx, :]
-            target = target[perm_indx, :]
+        #if self.permute_time:
+        #    perm_indx = torch.randperm(features_d.shape[0])
+        #    features_d = features_d[perm_indx, :]
+        #    target = target[perm_indx, :]
 
-        return features_d, target, (lat, lon)
+        return features_d, features_s, target, (lat, lon)
 
     def get_empty_xr(self):
-        ds = xr.open_zarr(self.dyn_target_path)[self.dyn_target_name].isel(
-            time=slice(self.t_start + self.num_warmup_steps, self.t_end))
+        ds = xr.open_zarr(self.data_path)[self.target_var].sel(
+                time=slice(self.time_slicer.seldate_first, self.time_slicer.seldate_last))
 
         return ds
 
@@ -231,15 +271,15 @@ class Data(Dataset):
 
     def _check_all_vars_present_in_dataset(self):
         def msg(
-            x): return f'Variable ``{x}`` not found in dataset located at {self.config["path"]}'
+            x): return f'Variable ``{x}`` not found in dataset located at {self.config["path"]}.'
 
         for var in self.input_vars + self.input_vars_static + [self.target_var]:
             if var not in self.ds:
                 raise ValueError(msg(var))
 
     def _check_var_time_dim(self):
-        def msg(
-            x, y): return f'Variable ``{x}`` seems to be {"non-" if y else ""}temporal, check the variable arguments.'
+        def msg(x, y):
+            return f'Variable ``{x}`` seems to be {"non-" if y else ""}temporal, check the variable arguments.'
 
         for var in self.input_vars + [self.target_var]:
             if self.ds[var].ndim != 3:

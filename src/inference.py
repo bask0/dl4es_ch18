@@ -7,7 +7,7 @@ import pickle
 import shutil
 import logging
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "7"
+os.environ["CUDA_VISIBLE_DEVICES"] = '7'
 
 
 def parse_args():
@@ -19,13 +19,6 @@ def parse_args():
         type=str,
         help='Configuration name.',
         default='default'
-    )
-
-    parser.add_argument(
-        '--dl_config_file',
-        type=str,
-        help='Data loader configuration file.',
-        default='../data/data_loader_config.json'
     )
 
     parser.add_argument(
@@ -70,13 +63,13 @@ def tune(args):
     config = get_config(args.config_name)
     config.update({'is_tune': False})
 
-    model_tune_store = get_target_path(config, args, mode='modeltune')
-    model_restore_path = os.path.jonin(
+    model_tune_store = get_target_path(config, mode='modeltune')
+    model_restore_path = os.path.join(
         model_tune_store,
+        'Emulator',
         'model.pth'
     )
-    store = get_target_path(config, args, mode='inference')
-    prediction_file = f'{store}predictions.zarr'
+    store = get_target_path(config, mode='inference')
 
     if args.overwrite:
         if os.path.isdir(store):
@@ -88,18 +81,14 @@ def tune(args):
                 'if you want to overwrite runs - all existing runs will be lost!')
     os.makedirs(store)
 
-    if os.path.isdir(prediction_file):
-        shutil.rmtree(prediction_file)
+    config.update({
+        'small_aoi': args.small_aoi
+    })
 
     best_config = load_best_config(model_tune_store)
     best_config.update({
         'fold': -1,
-        'hc_config': config}
-    )
-
-    config.update({
-        'store': store,
-        'small_aoi': args.small_aoi,
+        'hc_config': config
     })
 
     # Inference is a single run, we can use more resources.
@@ -108,13 +97,14 @@ def tune(args):
     best_config['hc_config']['num_workers'] = 20
     best_config['hc_config']['batch_size'] = 200
 
+    # Use full sequence for predictions.
+    best_config['hc_config']['time']["train_seq_length"] = 0
+
     print('Restoring model from: ', model_restore_path)
     e = Emulator(best_config)
     e._restore(model_restore_path)
-    e._predict(prediction_file)
-    #predictions.to_netcdf(os.path.join(store, 'predictions.nc'))
-
-    # summarize_run(store)
+    e._predict(store, predict_training_set=False)
+    e._predict(store, predict_training_set=True)
 
 
 if __name__ == '__main__':

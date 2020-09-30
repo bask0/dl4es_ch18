@@ -4,6 +4,12 @@ import numpy as np
 import xarray as xr
 import datetime
 import sys
+import os
+from torch.optim.lr_scheduler import LambdaLR
+from warnings import warn
+
+from utils.loggers import EpochLogger
+from utils.lr_scheduler import cos_decay_with_warmup
 
 
 class Trainer(object):
@@ -15,82 +21,105 @@ class Trainer(object):
             optimizer,
             loss_fn,
             train_seq_length,
-            train_sample_size=None):
+            train_sample_size=None,
+            gradient_clipping=0.05):
         self.train_loader = train_loader
         self.eval_loader = eval_loader
         self.model = model.cuda() if torch.cuda.is_available() else model
-        self.model.weight_init()
+        # self.model.weight_init()
         self.optimizer = optimizer
         self.loss_fn = loss_fn
         self.train_seq_length = train_seq_length
         self.train_sample_size = 9999999999 if train_sample_size is None else train_sample_size
+        self.gradient_clipping = gradient_clipping
+
+        scheduler_lambda = cos_decay_with_warmup(warmup=5, T=200, start_val=0.00001)
+        self.scheduler = LambdaLR(self.optimizer, lr_lambda=scheduler_lambda)
 
         self.epoch = 0
-        self.global_step = 0
 
         self.patience_counter = 0
         self.best_loss = None
 
+        self.epoch_logger = EpochLogger()
+
     def train_epoch(self):
         self.model.train()
 
-        total_loss = 0
+        nan_counter = 0
 
-        for step, (features_d, target, _) in enumerate(self.train_loader):
+        for step, (features_d, features_s, target, _) in enumerate(self.train_loader):
 
             if torch.cuda.is_available():
                 features_d = features_d.cuda(non_blocking=True)
+                features_s = features_s.cuda(non_blocking=True)
                 target = target.cuda(non_blocking=True)
 
-            # if torch.isnan(features).any():
-            #     raise ValueError(
-            #         'NaN in features in training, training stopped.')
-            # if torch.isnan(targets).any():
-            #     raise ValueError(
-            #         'NaN in target in training, training stopped.')
+            #if torch.isnan(features_d).any():
+            #    raise ValueError(
+            #        'NaN in dynamic features during training, training stopped.')
+            #if torch.isnan(features_s).any():
+            #    raise ValueError(
+            #        'NaN in static features during training, training stopped.')
+            #if torch.isnan(target).any():
+            #    raise ValueError(
+            #        'NaN in target during training, training stopped.')
 
-            pred = self.model(features_d)
+            pred = self.model(features_d, features_s)
 
             loss = self.loss_fn(
                 pred[:, self.train_loader.dataset.num_warmup_steps:],
                 target[:, self.train_loader.dataset.num_warmup_steps:])
-            
+
             self.optimizer.zero_grad()
             loss.backward()
 
             if torch.isnan(loss):
-                raise ValueError('Training loss is NaN, training stopped.')
+                # This is a debugging feature, if NaNs occur, possible a bug or unstable
+                # model.
+                nan_counter += 1
+                if nan_counter > 9:
+                    raise ValueError(
+                        'Training loss was NaN >5 times, training stopped.')
+                warn(
+                    f'Training loss was NaN {nan_counter} time{"" if nan_counter==1 else "s"} '
+                    'in a row, stopping after >9.')
+
+                continue
+
+            torch.nn.utils.clip_grad_norm_(
+                self.model.parameters(), self.gradient_clipping)
 
             self.optimizer.step()
 
-            total_loss += loss.item()
-
-            self.global_step += 1
+            self.epoch_logger.log('loss', 'train', loss.item())
 
             del loss
 
             if step > self.train_sample_size:
                 break
 
-        mean_loss = total_loss / (step + 1)
-
         self.epoch += 1
+
+        self.scheduler.step()
+
+        stats = self.epoch_logger.get_summary()
 
         return {
             'epoch': self.epoch,
-            'loss_train': mean_loss
+            'lr': self.scheduler.get_last_lr()[0],
+            **stats
         }
 
     @torch.no_grad()
     def eval_epoch(self):
         self.model.eval()
 
-        total_loss = 0
-
-        for step, (features_d, target, _) in enumerate(self.eval_loader):
+        for step, (features_d, features_s, target, _) in enumerate(self.eval_loader):
 
             if torch.cuda.is_available():
                 features_d = features_d.cuda(non_blocking=True)
+                features_s = features_s.cuda(non_blocking=True)
                 target = target.cuda(non_blocking=True)
 
             # if torch.isnan(features).any():
@@ -100,7 +129,7 @@ class Trainer(object):
             #     raise ValueError(
             #         'NaN in targets in evaluation, training stopped.')
 
-            pred = self.model(features_d)
+            pred = self.model(features_d, features_s)
 
             loss = self.loss_fn(
                 pred[:, self.eval_loader.dataset.num_warmup_steps:],
@@ -109,25 +138,38 @@ class Trainer(object):
             if torch.isnan(loss):
                 raise ValueError('Eval loss is NaN, training stopped.')
 
-            total_loss += loss.item()
+            self.epoch_logger.log('loss', 'eval', loss.item())
 
-        mean_loss = total_loss / (step + 1)
+            if step > self.train_sample_size:
+                break
 
-        perc_improved = self.early_stopping(mean_loss)
+        stats = self.epoch_logger.get_summary()
+
+        perc_improved = self.early_stopping(stats['loss_eval'])
 
         return {
-            'loss_eval': mean_loss,
+            **stats,
             'patience_counter': self.patience_counter,
             'perc_improved': perc_improved,
             'best_loss': self.best_loss
         }
 
     @torch.no_grad()
-    def predict(self, target_file):
+    def predict(self, target_dir, use_training_set=False):
         self.model.eval()
 
-        print('Prediction saved to: ', target_file)
-        xr_var = self.eval_loader.dataset.get_empty_xr()
+        if use_training_set:
+            print('\npredicting training set\n')
+        else:
+            print('\npredicting test set\n')
+
+        print('Prediction saved to: ', target_dir)
+        if use_training_set:
+            data_loader = self.train_loader
+        else:
+            data_loader = self.eval_loader
+
+        xr_var = data_loader.dataset.get_empty_xr()
 
         pred_array = np.zeros(xr_var.shape, dtype=np.float32)
         obs_array = np.zeros(xr_var.shape, dtype=np.float32)
@@ -135,46 +177,37 @@ class Trainer(object):
         pred_array.fill(np.nan)
         obs_array.fill(np.nan)
 
-        total_loss = 0
-
-        for step, (features_d, target, (lat, lon)) in enumerate(self.eval_loader):
+        for step, (features_d, features_s, target, (lat, lon)) in enumerate(data_loader):
 
             print_progress(
                 np.min((
                     (step + 1) *
-                    self.eval_loader.batch_size, len(self.eval_loader.dataset)
-                )), len(self.eval_loader.dataset), 'predicting')
+                    data_loader.batch_size, len(data_loader.dataset)
+                )), len(data_loader.dataset), 'predicting')
 
             if torch.cuda.is_available():
                 features_d = features_d.cuda(non_blocking=True)
+                features_s = features_s.cuda(non_blocking=True)
                 target = target.cuda(non_blocking=True)
 
-            # if torch.isnan(features).any():
-            #     raise ValueError(
-            #         'NaN in features in evaluation, training stopped.')
-            # if torch.isnan(targets).any():
-            #     raise ValueError(
-            #         'NaN in targets in evaluation, training stopped.')
+            pred = self.model(features_d, features_s)
+            pred = pred[:, data_loader.dataset.num_warmup_steps:]
+            target = target[:, data_loader.dataset.num_warmup_steps:]
 
-            pred = self.model(features_d)
             pred = self.unstandardize_target(pred)
-            pred = pred[:, self.eval_loader.dataset.num_warmup_steps:, 0]
+            target = self.unstandardize_target(target)
 
-            targets = target[:, self.eval_loader.dataset.num_warmup_steps:]
             loss = self.loss_fn(
                 pred,
-                targets)
-
-            #if torch.isnan(loss):
-            #    raise ValueError('Eval loss is NaN.')
-
-            total_loss += loss.item()
+                target)
 
             lat = lat.numpy()
             lon = lon.numpy()
 
             pred_array[:, lat, lon] = pred.cpu().numpy().T
-            obs_array[:, lat, lon] = targets.cpu().numpy().T
+            obs_array[:, lat, lon] = target.cpu().numpy().T
+
+            self.epoch_logger.log('loss', 'test', loss.item())
 
         print('\nWriting to file...')
 
@@ -196,7 +229,7 @@ class Trainer(object):
         pred_space_optim = pred.chunk({
             'lat': -1,
             'lon': -1,
-            'time': 1
+            'time': 15
         })
 
         pred_time_optim = pred.chunk({
@@ -205,15 +238,22 @@ class Trainer(object):
             'time': -1
         })
 
-        pred_space_optim.to_zarr(target_file.replace('.zarr', '_so.zarr'))
-        pred_time_optim.to_zarr(target_file.replace('.zarr', '_to.zarr'))
+        if use_training_set:
+            file_name_ending = '_trainset'
+        else:
+            file_name_ending = ''
 
-        mean_loss = total_loss / (step + 1)
+        pred_space_optim.to_zarr(os.path.join(
+            target_dir, f'pred_so{file_name_ending}.zarr'))
+        pred_time_optim.to_zarr(os.path.join(
+            target_dir, f'pred_to{file_name_ending}.zarr'))
 
         print('Done.')
 
+        stats = self.epoch_logger.get_summary()
+
         return {
-            'loss_eval': mean_loss
+            **stats
         }
 
     def early_stopping(self, loss):
@@ -248,12 +288,11 @@ class Trainer(object):
         torch.save(
             {
                 'epoch': self.epoch,
-                'global_step': self.global_step,
                 'patience_counter': self.patience_counter,
                 'best_loss': self.best_loss,
                 'model_state_dict': self.model.state_dict(),
                 'optimizer_state_dict': self.optimizer.state_dict(),
-                #'scheduler_state_dict': self.scheduler.state_dict()
+                'scheduler_state_dict': self.scheduler.state_dict()
             },
             checkpoint
         )
@@ -276,16 +315,15 @@ class Trainer(object):
 
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
-        # self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
 
         self.epoch = checkpoint['epoch']
-        self.global_step = checkpoint['global_step']
         self.patience_counter = checkpoint['patience_counter']
         self.best_loss = checkpoint['best_loss']
 
     def unstandardize_target(self, target):
-        return target * self.train_loader.dataset.dyn_target_stats['std'] + \
-            self.train_loader.dataset.dyn_target_stats['mean']
+        return self.train_loader.dataset.unstandardize(
+                    target, self.train_loader.dataset.target_var)
 
 
 def rprint(value):
