@@ -29,7 +29,9 @@ def plot_map(
         extent=[-180 + 1e-3, 180 - 1e-3, - 60 + 1e-3, 90 - 1e-3],
         histogram_placement=[0.04, 0.15, 0.23, 0.3],
         ax=None,
+        landcolor='0.7',
         figsize=(14, 7),
+        contourf=False,
         subplot_kw={},
         cbar_kw={},
         hist_kw={},
@@ -57,8 +59,12 @@ def plot_map(
     ax: matplotlib axis, optional
         If passed, plot will be added to this axis. Else, a default axes will be used. Use `subplots_robinson(...)`
         to create subplots with Robinson projection equivalent to plt.subplots(...).
+    landcolor: str
+        Land fill color.
     figsize: (int, int), optional
         Figure size in inches, has no effect if `ax` is passed.
+    contourf: bool, optional
+        Wheter to use controurf plot.
     subplot_kw: dict, optional
         Keyword arguments passed to subplot, has no effect if `ax` is passed.
     hist_kw: dict, optional
@@ -96,7 +102,7 @@ def plot_map(
                 'Cannot infer longitude coorinates, must be `lon` or `longitude`.')
         ds = ds.coarsen({lat: coarsen, lon: coarsen}).mean()
 
-    ax.add_feature(cartopy.feature.LAND, facecolor='0.7')
+    ax.add_feature(cartopy.feature.LAND, facecolor=landcolor)
     if ds.ndim == 2:
         cbar_kwargs = dict(
             orientation='horizontal',
@@ -106,11 +112,18 @@ def plot_map(
         if 'cbar_kwargs' in kwargs:
             cbar_kwargs.update(kwargs['cbar_kwargs'])
             kwargs.pop('cbar_kwargs')
-        img = ds.plot.pcolormesh(
-            ax=ax,
-            transform=ccrs.PlateCarree(),
-            cbar_kwargs=cbar_kwargs,
-            **kwargs)
+        if contourf:
+            img = ds.plot.contourf(
+                ax=ax,
+                transform=ccrs.PlateCarree(),
+                cbar_kwargs=cbar_kwargs,
+                **kwargs)
+        else:
+            img = ds.plot.pcolormesh(
+                ax=ax,
+                transform=ccrs.PlateCarree(),
+                cbar_kwargs=cbar_kwargs,
+                **kwargs)
     if ds.ndim == 3:
         hist = False
         img = ds.plot.imshow(
