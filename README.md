@@ -5,7 +5,7 @@
 
 ## The DL4ES book - Chapter 18
 
-**Authors**</br>B. Kraft [bkraf@bgc-jena.mpg.de]</br>S. Besnard [sbesnard@bgc-jena.mpg.de]</br>S. Koirala [skoirala@bgc-jena.mpg.de]
+**Authors**</br>B. Kraft [bkraft@bgc-jena.mpg.de]</br>S. Besnard [sbesnard@bgc-jena.mpg.de]</br>S. Koirala [skoirala@bgc-jena.mpg.de]
 
 </div><br><br>
 
